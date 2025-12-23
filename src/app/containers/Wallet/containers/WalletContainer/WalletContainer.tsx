@@ -11,7 +11,6 @@ const routes = [
   {
     path: ROUTES_PATH.WALLET.BASE,
     element: <Wallet />,
-    exact: true,
   },
   {
     path: ROUTES_PATH.WALLET.SEND,

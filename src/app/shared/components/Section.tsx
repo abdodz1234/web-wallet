@@ -11,6 +11,7 @@ interface SectionProps {
   variant?: 'regular' | 'gray';
   showAllAction?: () => void;
   defaultCollapseState?: boolean;
+  children?: React.ReactNode;
 }
 
 const SectionStyled = styled.div`

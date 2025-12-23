@@ -1,16 +1,17 @@
 {
   "compilerOptions": {
-    "jsx": "react",
+    "jsx": "react-jsx",
     "target": "es2020",
-    "module": "commonjs",
-    "moduleResolution": "Node",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "esModuleInterop": true,
     "typeRoots": [
       "node_modules/@types",
       "node_modules/web-ext-types",
       "./src/@types"
     ],
-    "types": ["node"],
+    "lib": ["DOM", "DOM.Iterable", "ES2020"],
+    "types": ["chrome"],
     "baseUrl": "src/",
     "paths": {
       "@app/*": ["app/*"],

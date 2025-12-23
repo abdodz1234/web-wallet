@@ -8,12 +8,10 @@ const routes = [
   {
     path: ROUTES_PATH.TRANSACTIONS.BASE,
     element: <Transactions />,
-    exact: true,
   },
   {
     path: ROUTES_PATH.TRANSACTIONS.DETAIL,
     element: <TransactionDetail />,
-    exact: true,
   },
 ];
 

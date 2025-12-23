@@ -9,17 +9,14 @@ const routes = [
   {
     path: ROUTES_PATH.ASSETS.BASE,
     element: <AssetsList />,
-    exact: true,
   },
   {
     path: ROUTES_PATH.ASSETS.DETAIL,
     element: <AssetDetail />,
-    exact: true,
   },
   {
     path: ROUTES_PATH.ASSETS.INFO,
     element: <AssetInfo />,
-    exact: true,
   },
 ];
 

@@ -15,6 +15,7 @@ const FooterStyled = styled.div<FooterProps>`
 
 interface FooterProps {
   margin?: 'large' | 'small';
+  children?: React.ReactNode;
 }
 
 const Footer: React.FC<FooterProps> = ({ children, margin = 'large' }) => (

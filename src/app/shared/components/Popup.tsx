@@ -14,6 +14,7 @@ interface PopupProps {
   visible?: boolean;
   onCancel?: React.MouseEventHandler;
   footerClass?: string;
+  children?: React.ReactNode;
 }
 
 const ContainerStyled = styled.div`

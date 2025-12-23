@@ -9,6 +9,7 @@ interface SplashProps {
   size?: 'large' | 'small';
   blur?: boolean;
   onReturn?: React.MouseEventHandler;
+  children?: React.ReactNode;
 }
 
 const ContainerStyled = styled.div<SplashProps>`

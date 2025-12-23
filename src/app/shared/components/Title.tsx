@@ -3,6 +3,7 @@ import { styled } from '@linaria/react';
 
 interface TitleProps {
   variant?: 'regular' | 'subtitle' | 'heading';
+  children?: React.ReactNode;
 }
 
 const STYLE_BASE = {

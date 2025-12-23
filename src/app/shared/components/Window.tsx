@@ -26,6 +26,7 @@ interface WindowProps {
   navigateToInfo?: React.MouseEventHandler | undefined;
   showHideButton?: boolean;
   showInfoButton?: boolean;
+  children?: React.ReactNode;
 }
 
 function getColor(pallete: string): string {

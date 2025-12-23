@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 
 import { css } from '@linaria/core';
-import { Scrollbars } from 'react-custom-scrollbars';
+import { Scrollbar } from 'react-scrollbars-custom';
 import 'react-toastify/dist/ReactToastify.css';
 import './styles';
 
@@ -91,13 +91,7 @@ const App = () => {
 
   return (
     <ErrorBoundary>
-      <Scrollbars
-        style={{ width: '100%' }}
-        autoHeight
-        autoHeightMin="100%"
-        autoHeightMax="100%"
-        renderThumbVertical={(props) => <div {...props} className={trackStyle} />}
-      >
+      <Scrollbar style={{ width: '100%', height: '100%' }} noScrollX thumbYProps={{ className: trackStyle }}>
         {content}
         <ToastContainer
           position="bottom-center"
@@ -119,7 +113,7 @@ const App = () => {
             borderRadius: '10px',
           }}
         />
-      </Scrollbars>
+      </Scrollbar>
     </ErrorBoundary>
   );
 };

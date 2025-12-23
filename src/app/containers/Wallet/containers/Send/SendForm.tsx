@@ -140,8 +140,8 @@ const SendForm = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [focus, setFocus] = useState(false);
   const [showFullAddress, setShowFullAddress] = useState(false);
-  const [validateInterval, setValidateInterval] = useState<null | NodeJS.Timer>(null);
-  const [validateAmountInterval, setValidateAmountInterval] = useState<null | NodeJS.Timer>(null);
+  const [validateInterval, setValidateInterval] = useState<ReturnType<typeof setTimeout> | null>(null);
+  const [validateAmountInterval, setValidateAmountInterval] = useState<ReturnType<typeof setTimeout> | null>(null);
   const addressData = useSelector(selectSendAddressData());
   const sbbs = useSelector(selectSbbs());
 

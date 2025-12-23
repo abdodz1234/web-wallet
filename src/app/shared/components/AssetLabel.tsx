@@ -82,7 +82,7 @@ const AssetLabel: React.FC<AssetLabelProps> = ({
   const signed = !!income;
   const sign = signed ? getSign(income) : '';
   const n = truncate(target?.metadata_pairs.UN);
-  const name = `${n}` ?? '';
+  const name = n ?? '';
   const label = `${sign}${convertLowAmount(amount)} ${name}`;
 
   return (

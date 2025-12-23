@@ -10,7 +10,6 @@ const routes = [
   {
     path: '/',
     element: <Settings />,
-    exact: true,
   },
   {
     path: ROUTES_PATH.SETTINGS.SETTINGS_REPORT,

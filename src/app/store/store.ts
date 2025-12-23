@@ -23,12 +23,12 @@ if (process.env.NODE_ENV === 'development') {
     console.debug(
       `%c action:::${new Date()}`,
       'color:#eca1a6;font-weight:bold;font-size:12px;',
-      action.type,
-      action.payload,
+      (action as any).type,
+      (action as any).payload,
     );
     // eslint-disable-next-line no-console
     console.debug();
-    next(action);
+    next(action as any);
     // eslint-disable-next-line no-console
     console.debug('%c currentState:::', 'color:#feb236;font-weight:bold;font-size:12px;', { ...store.getState() });
     // eslint-disable-next-line no-console

@@ -16,7 +16,6 @@ const routes = [
   {
     path: '/',
     element: <AuthBase />,
-    exact: true,
   },
   {
     path: ROUTES_PATH.AUTH.LOGIN,

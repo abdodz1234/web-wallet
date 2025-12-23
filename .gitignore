@@ -112,3 +112,4 @@ dist
 examples/
 packages/
 .DS_Store
+utils.js

@@ -12,7 +12,7 @@ import { selectSeedCache, selectSeedErrors, selectSeedValues } from '@app/contai
 import { unsetAssetSync } from '@app/shared/store/actions';
 
 const Restore: React.FC = () => {
-  const [interval, updateInterval] = useState<null | NodeJS.Timer>(null);
+  const [interval, updateInterval] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [cache, setCache] = useState('');
 
   const dispatch = useDispatch();

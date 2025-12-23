@@ -9,9 +9,9 @@ type Action = ActionType<typeof actions>;
 const initialState: SharedStateType = {
   routerLink: '',
   errorMessage: null,
-  isBalanceHidden: !!localStorage.getItem('isBalanceHidden') ?? false,
-  isLocked: !!localStorage.getItem('locked') ?? false,
-  isAssetSync: !!localStorage.getItem('asset_sync') ?? false,
+  isBalanceHidden: !!localStorage.getItem('isBalanceHidden'),
+  isLocked: !!localStorage.getItem('locked'),
+  isAssetSync: !!localStorage.getItem('asset_sync'),
   isLoading: false,
 };
 

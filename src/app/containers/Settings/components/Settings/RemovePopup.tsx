@@ -16,7 +16,7 @@ interface RemovePopupProps {
 }
 
 const RemovePopup: React.FC<RemovePopupProps> = ({ visible, onCancel }) => {
-  const inputRef = useRef<HTMLInputElement>();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [warned, setWarned] = useState(false);
   const dispatch = useDispatch();
   const error = useSelector(selectErrorMessage());
@@ -27,7 +27,7 @@ const RemovePopup: React.FC<RemovePopupProps> = ({ visible, onCancel }) => {
 
   const handleConfirm: React.MouseEventHandler = () => {
     if (warned) {
-      const { value } = inputRef.current;
+      const { value } = inputRef.current ?? {};
       dispatch(deleteWallet.request(value));
     } else {
       setWarned(true);

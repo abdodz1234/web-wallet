@@ -1,4 +1,4 @@
-import { AnyAction, combineReducers } from 'redux';
+import { combineReducers } from 'redux';
 import { AppState } from '@app/shared/interface';
 import { SharedReducer } from '@app/shared/store/reducer';
 import { AuthReducer } from '@app/containers/Auth/store/reducer';
@@ -15,5 +15,5 @@ export default () => {
     transactions: TransactionsReducer,
   });
 
-  return (state: AppState | undefined, action: AnyAction) => appReducer(state, action);
+  return (state: AppState | undefined, action: unknown) => appReducer(state, action as any);
 };

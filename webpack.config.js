@@ -23,10 +23,19 @@ const config = {
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.js'],
+    alias: {
+      'process/browser': require.resolve('process/browser.js'),
+    },
     plugins: [new TsconfigPathsPlugin()],
   },
   module: {
     rules: [
+      {
+        test: /\.m?js$/,
+        resolve: {
+          fullySpecified: false,
+        },
+      },
       {
         test: /\.tsx?$/,
         use: ['babel-loader', '@linaria/webpack-loader'],
@@ -96,7 +105,7 @@ const config = {
       ],
     }),
     new webpack.ProvidePlugin({
-      process: 'process/browser',
+      process: 'process/browser.js',
     }),
   ],
   externals: ['fs'],

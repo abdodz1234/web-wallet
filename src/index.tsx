@@ -1,10 +1,11 @@
 /// <reference types="chrome"/>
 
 import * as React from 'react';
-import * as ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
-import 'babel-polyfill';
+import 'core-js/stable';
+import 'regenerator-runtime/runtime';
 
 import { initRemoteConnection } from '@app/core/api';
 import store from '@app/store/rootStore';
@@ -18,11 +19,15 @@ initRemoteConnection();
 
 const ReduxProvider = Provider as unknown as React.ComponentType<any>;
 
-ReactDOM.render(
+const rootEl = document.getElementById('root');
+if (!rootEl) {
+  throw new Error('Root element (#root) not found');
+}
+
+createRoot(rootEl).render(
   <MemoryRouter>
     <ReduxProvider store={store}>
       <App />
     </ReduxProvider>
   </MemoryRouter>,
-  document.getElementById('root'),
 );

@@ -26,12 +26,12 @@ const Login: React.FC = () => {
 
   const error = useSelector(selectErrorMessage());
 
-  const inputRef = useRef<HTMLInputElement>();
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = useCallback(
     (event: React.FormEvent) => {
       event.preventDefault();
-      const { value } = inputRef.current;
+      const { value } = inputRef.current ?? {};
 
       dispatch(setError(null));
       dispatch(startWallet.request(value));

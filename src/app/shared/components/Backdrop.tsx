@@ -3,6 +3,7 @@ import { styled } from '@linaria/react';
 
 interface BackDropProps {
   onCancel?: React.MouseEventHandler;
+  children?: React.ReactNode;
 }
 
 const BackdropStyled = styled.div`
@@ -16,11 +17,11 @@ const BackdropStyled = styled.div`
 `;
 
 const BackDrop: React.FC<BackDropProps> = ({ onCancel, children }) => {
-  const rootRef = useRef();
+  const rootRef = useRef<HTMLDivElement>(null);
 
-  const handleOutsideClick = (event) => {
+  const handleOutsideClick: React.MouseEventHandler<HTMLDivElement> = (event) => {
     if (event.target === rootRef.current) {
-      onCancel(event);
+      onCancel?.(event);
     }
   };
 

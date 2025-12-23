@@ -1,8 +1,6 @@
-import React, {
-  ReactElement, useEffect, useRef, useState,
-} from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { styled } from '@linaria/react';
-import { Scrollbars } from 'react-custom-scrollbars';
+import { Scrollbar } from 'react-scrollbars-custom';
 import { css } from '@linaria/core';
 import config from '@app/config';
 import Angle from './Angle';
@@ -79,6 +77,7 @@ interface OptionProps {
   value: any;
   active?: boolean;
   onClick?: React.MouseEventHandler;
+  children?: React.ReactNode;
 }
 
 export const Option: React.FC<OptionProps> = ({ active, children, onClick }) => {
@@ -93,13 +92,14 @@ interface SelectProps<T = any> {
   value: T;
   className?: string;
   onSelect: (value: T) => void;
+  children?: React.ReactNode;
 }
 
 export const Select: React.FC<SelectProps> = ({
   value, className, children, onSelect,
 }) => {
   const [opened, setOpened] = useState(false);
-  const selectRef = useRef<HTMLDivElement>();
+  const selectRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (opened) {
@@ -110,12 +110,12 @@ export const Select: React.FC<SelectProps> = ({
     }
   }, [opened]);
 
-  const array = React.Children.toArray(children);
+  const array = React.Children.toArray(children).filter(React.isValidElement) as React.ReactElement<OptionProps>[];
 
   const disabled = array.length === 1;
 
   const options = array.map((child) => {
-    const { value: next } = (child as React.ReactElement).props;
+    const { value: next } = child.props;
     const active = value === next;
 
     const handleClick: React.MouseEventHandler<HTMLElement> = (event) => {
@@ -128,17 +128,13 @@ export const Select: React.FC<SelectProps> = ({
       setOpened(false);
     };
 
-    return React.cloneElement(child as React.ReactElement, {
+    return React.cloneElement(child, {
       active,
-      disabled,
       onClick: handleClick,
-    });
+    } as Partial<OptionProps>);
   });
 
-  const selected = array.find((child) => {
-    const { value: current } = (child as ReactElement).props;
-    return value === current;
-  });
+  const selected = array.find((child) => value === child.props.value) ?? array[0];
 
   const handleMouseDown = () => {
     setOpened(!opened);
@@ -151,21 +147,15 @@ export const Select: React.FC<SelectProps> = ({
   return (
     <ContainerStyled className={className}>
       <ButtonStyled type="button" onMouseDown={handleMouseDown} disabled={disabled}>
-        {(selected as ReactElement).props.children}
+        {selected?.props.children}
         {options.length > 1 && <Angle className={angleStyle} value={opened ? 0 : 180} margin={opened ? 3 : 1} />}
       </ButtonStyled>
 
       {opened && (
         <SelectStyled ref={selectRef} tabIndex={-1} onBlur={handleBlur}>
-          <Scrollbars
-            style={{ height: 200 }}
-            autoHeight
-            autoHeightMin="100%"
-            autoHeightMax="100%"
-            renderThumbVertical={(props) => <div {...props} className={trackStyle} />}
-          >
+          <Scrollbar style={{ height: 200 }} noScrollX thumbYProps={{ className: trackStyle }}>
             {options}
-          </Scrollbars>
+          </Scrollbar>
         </SelectStyled>
       )}
     </ContainerStyled>

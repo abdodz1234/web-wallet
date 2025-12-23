@@ -4,13 +4,13 @@ const { NODE_ENV = 'production' } = process.env;
 
 const development: Configuration = {
   env: NODE_ENV,
-  explorer_url_confidential_id: 'https://dappnet-net.explorer.beam.mw/assets/details/',
-  path_node: 'eu-node02.dappnet.beam.mw:8200',
-  explorer_url: 'https://dappnet.explorer.beam.mw/block?kernel_id=',
-  restore_url: 'https://mobile-restore.beam.mw/dappnet/dappnet_recovery.bin',
-  theme: 'dappnet',
-  dex_url: 'https://dappnet-dex.beam.mw',
-  network: 'dappnet',
+  explorer_url: 'https://explorer.beam.mw/block?kernel_id=',
+  restore_url: 'https://mobile-restore.beam.mw/mainnet/mainnet_recovery.bin',
+  path_node: 'web-wallet.beam.mw:8200',
+  theme: 'mainnet',
+  explorer_url_confidential_id: 'https://explorer.beam.mw/assets/details/',
+  dex_url: 'https://dex.beam.mw',
+  network: 'mainnet',
 };
 
 const master_net: Configuration = {

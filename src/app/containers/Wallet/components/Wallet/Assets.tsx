@@ -17,6 +17,7 @@ const ListStyled = styled.ul`
 interface AssetsProps {
   data: AssetTotal[];
   isBalanceHidden?: boolean;
+  listClassName?: string;
   assetClassName?: string;
 }
 
@@ -56,7 +57,9 @@ const ListItemStyled = styled.li<{ opt_color?: string; asset_id: number }>`
   }
 `;
 
-const Assets: React.FC<AssetsProps> = ({ data, isBalanceHidden, assetClassName }) => {
+const Assets: React.FC<AssetsProps> = ({
+  data, isBalanceHidden, listClassName, assetClassName,
+}) => {
   const navigate = useNavigate();
 
   const navigateToDetail = (asset_id: number) => {
@@ -64,7 +67,7 @@ const Assets: React.FC<AssetsProps> = ({ data, isBalanceHidden, assetClassName }
   };
 
   return (
-    <ListStyled>
+    <ListStyled className={listClassName}>
       {data.map(({ asset_id, available, metadata_pairs }) => (
         <ListItemStyled
           opt_color={metadata_pairs.OPT_COLOR ? metadata_pairs.OPT_COLOR : null}

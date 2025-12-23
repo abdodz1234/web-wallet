@@ -27,6 +27,82 @@ let notificationPort = null;
 let connected = false;
 let activeTab = null;
 
+type BeamRpcRequestMessage = {
+  type: 'BEAM_WALLET_RPC_REQUEST';
+  version: 1;
+  payload: {
+    id: string;
+    method: string;
+    params?: any;
+    appname?: string;
+  };
+};
+
+type BeamRpcPushMessage = {
+  type: 'BEAM_WALLET_RPC_PUSH';
+  version: 1;
+  payload: { json: string };
+};
+
+type BeamRpcErrorMessage = {
+  type: 'BEAM_WALLET_RPC_ERROR';
+  version: 1;
+  payload: {
+    id?: string;
+    error: { code: number; message: string; data?: any };
+  };
+};
+
+// Multiple tabs from the same origin should not overwrite each other (dnode did).
+const externalRpcPortsByOrigin: Record<string, Set<chrome.runtime.Port>> = {};
+
+function getSenderOrigin(sender: any): string | null {
+  if (!sender) return null;
+  if (typeof sender.origin === 'string' && sender.origin.length) return sender.origin;
+  if (typeof sender.url === 'string' && sender.url.length) {
+    try {
+      return new URL(sender.url).origin;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function addExternalRpcPort(origin: string, p: chrome.runtime.Port) {
+  if (!externalRpcPortsByOrigin[origin]) {
+    externalRpcPortsByOrigin[origin] = new Set();
+  }
+  externalRpcPortsByOrigin[origin].add(p);
+}
+
+function removeExternalRpcPort(origin: string, p: chrome.runtime.Port) {
+  externalRpcPortsByOrigin[origin]?.delete(p);
+  if (externalRpcPortsByOrigin[origin]?.size === 0) {
+    delete externalRpcPortsByOrigin[origin];
+  }
+}
+
+function broadcastToOrigin(origin: string, msg: BeamRpcPushMessage | BeamRpcErrorMessage) {
+  externalRpcPortsByOrigin[origin]?.forEach((p) => {
+    try {
+      p.postMessage(msg);
+    } catch {
+      // ignore dead port
+    }
+  });
+}
+
+// Forward async wallet callbacks to every tab for that origin
+wallet.setExternalAppMessageHandler((appurl: string, json: string) => {
+  const msg: BeamRpcPushMessage = {
+    type: 'BEAM_WALLET_RPC_PUSH',
+    version: 1,
+    payload: { json },
+  };
+  broadcastToOrigin(appurl, msg);
+});
+
 export function getEnvironment(href = window.location.href) {
   const url = new URL(href);
   switch (url.pathname) {
@@ -133,31 +209,82 @@ function handleConnect(remote) {
 
     case Environment.CONTENT:
       NotificationManager.setPort(remote);
+      {
+        const origin = getSenderOrigin(remote.sender);
+        if (!origin) break;
+        addExternalRpcPort(origin, remote);
+
+        remote.onDisconnect.addListener(() => {
+          removeExternalRpcPort(origin, remote);
+        });
+
+        remote.onMessage.addListener((msg: BeamRpcRequestMessage) => {
+          if (!msg || msg.type !== 'BEAM_WALLET_RPC_REQUEST' || msg.version !== 1) return;
+          const {
+            id, method, params, appname,
+          } = msg.payload || {};
+          if (!id || !method) return;
+
+          // keep UI labeling consistent with previous behavior
+          if (appname) {
+            notificationManager.appname = appname;
+          }
+
+          try {
+            const ok = wallet.callExternalWalletApi(origin, { id, method, params });
+            if (!ok) {
+              broadcastToOrigin(origin, {
+                type: 'BEAM_WALLET_RPC_ERROR',
+                version: 1,
+                payload: {
+                  id,
+                  error: { code: -32000, message: 'BeamApi not connected for this site' },
+                },
+              });
+            }
+          } catch (e: any) {
+            broadcastToOrigin(origin, {
+              type: 'BEAM_WALLET_RPC_ERROR',
+              version: 1,
+              payload: {
+                id,
+                error: { code: -32001, message: e?.message || 'BeamApi call failed', data: e },
+              },
+            });
+          }
+        });
+      }
       break;
 
     case Environment.CONTENT_REQ: {
       notificationManager.setReqPort(remote);
       contentPort = remote;
       contentPort.onMessage.addListener((msg) => {
+        const origin = getSenderOrigin(remote.sender);
+        if (!origin) return;
+
         if (wallet.isRunning() && !localStorage.getItem('locked')) {
-          if (wallet.isConnectedSite({ appName: msg.appname, appUrl: remote.sender.origin })) {
-            msg.appurl = remote.sender.origin;
+          if (wallet.isConnectedSite({ appName: msg.appname, appUrl: origin })) {
+            msg.appurl = origin;
             wallet.connectExternal(msg);
           } else if (msg.type === ExternalAppMethod.CreateBeamApi) {
             if (msg.is_reconnect && notificationManager.appname === msg.appname) {
               // eslint-disable-next-line
               notificationManager.openPopup();
             } else {
-              notificationManager.openConnectNotification(msg, remote.sender.origin);
+              notificationManager.openConnectNotification(msg, origin);
             }
           }
         } else {
-          notificationManager.openAuthNotification(msg, remote.sender.origin);
+          notificationManager.openAuthNotification(msg, origin);
         }
       });
 
       contentPort.onDisconnect.addListener((e) => {
-        wallet.disconnectAppApi(e.sender.origin);
+        const origin = getSenderOrigin(e.sender);
+        if (origin) {
+          wallet.disconnectAppApi(origin);
+        }
       });
       break;
     }

@@ -11,21 +11,33 @@ import TransactionItem from './TransactionItem';
 import EmptyTransaction from './EmptyTransaction';
 
 const ListStyled = styled.ul`
-  margin: 0 -20px;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 `;
 
 interface TransactionsProps {
   data: Transaction[];
   isBalanceHidden?: boolean;
+  className?: string;
+  itemClassName?: string;
 }
 
 const ListItemStyled = styled.li`
   position: relative;
-  padding: 20px;
-  padding-left: 56px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, transform 120ms ease;
 
-  &:nth-child(odd) {
-    background-color: rgba(255, 255, 255, 0.05);
+  &:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.12);
   }
 `;
 
@@ -45,7 +57,12 @@ const fromInvokeData = (data: Contract, fee: number): Partial<Transaction> => {
   return null;
 };
 
-const TransactionList: React.FC<TransactionsProps> = ({ data: transactions, isBalanceHidden }) => {
+const TransactionList: React.FC<TransactionsProps> = ({
+  data: transactions,
+  isBalanceHidden,
+  className,
+  itemClassName,
+}) => {
   const assets = useSelector(selectAssets());
   const navigate = useNavigate();
 
@@ -54,7 +71,7 @@ const TransactionList: React.FC<TransactionsProps> = ({ data: transactions, isBa
   };
 
   return transactions.length ? (
-    <ListStyled>
+    <ListStyled className={className}>
       {transactions.map((tx) => {
         const { invoke_data: contracts } = tx;
         const payload = contracts ? fromInvokeData(contracts[0], tx.fee) : null;
@@ -67,7 +84,7 @@ const TransactionList: React.FC<TransactionsProps> = ({ data: transactions, isBa
           };
 
         return (
-          <ListItemStyled key={tx.txId} onClick={() => navigateTransactionDetail(tx.txId)}>
+          <ListItemStyled className={itemClassName} key={tx.txId} onClick={() => navigateTransactionDetail(tx.txId)}>
             <TransactionItem data={data} assets={assets} isBalanceHidden={isBalanceHidden} />
           </ListItemStyled>
         );

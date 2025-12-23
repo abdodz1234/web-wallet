@@ -27,6 +27,7 @@ import ExtensionPlatform from '@app/core/Extension';
 import * as extensionizer from 'extensionizer';
 
 import WasmWallet from '@core/WasmWallet';
+import { clearSavedPassword } from '@core/RememberPassword';
 
 const wallet = WasmWallet.getInstance();
 const notificationManager = NotificationManager.getInstance();
@@ -63,6 +64,8 @@ export function remoteEventChannel() {
 function* lockWallet() {
   localStorage.setItem('locked', '1');
   walletLocked();
+  // Always clear any remembered password when user explicitly locks.
+  yield call(clearSavedPassword);
   yield put(navigate(ROUTES.AUTH.LOGIN));
 }
 

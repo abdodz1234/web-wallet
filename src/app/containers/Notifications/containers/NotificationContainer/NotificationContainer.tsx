@@ -2,7 +2,9 @@ import React from 'react';
 import { useRoutes } from 'react-router-dom';
 
 import { ROUTES_PATH } from '@app/shared/constants';
-import { ApproveInvoke, ApproveSend, Connect } from '..';
+import ApproveInvoke from '../ApproveInvoke';
+import ApproveSend from '../ApproveSend';
+import Connect from '../Connect';
 
 const routes = [
   {

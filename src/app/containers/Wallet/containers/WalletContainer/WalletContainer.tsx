@@ -2,9 +2,10 @@ import React from 'react';
 import { useRoutes } from 'react-router-dom';
 
 import { ROUTES_PATH } from '@app/shared/constants';
-import {
-  Wallet, SendForm, Receive, Utxo,
-} from '..';
+import Wallet from '../Wallet';
+import Receive from '../Receive';
+import Utxo from '../Utxo';
+import { SendForm } from '../Send';
 
 const routes = [
   {

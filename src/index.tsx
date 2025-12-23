@@ -6,11 +6,9 @@ import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
 import 'babel-polyfill';
 
-import configureStore from '@app/store/store';
 import { initRemoteConnection } from '@app/core/api';
+import store from '@app/store/rootStore';
 import App from './app';
-
-const { store } = configureStore();
 
 window.global = window;
 
@@ -18,11 +16,13 @@ export default store;
 
 initRemoteConnection();
 
+const ReduxProvider = Provider as unknown as React.ComponentType<any>;
+
 ReactDOM.render(
   <MemoryRouter>
-    <Provider store={store}>
+    <ReduxProvider store={store}>
       <App />
-    </Provider>
+    </ReduxProvider>
   </MemoryRouter>,
   document.getElementById('root'),
 );

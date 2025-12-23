@@ -42,7 +42,7 @@ function getColor(pallete: string): string {
 const ContainerStyled = styled.div<WindowProps>`
   position: relative;
   min-height: 100vh;
-  padding: 130px 30px 30px;
+  padding: 130px 40px 30px;
   text-align: center;
 
   &:before {
@@ -67,7 +67,7 @@ const HeadingStyled = styled.div<{ pallete: string }>`
   top: 0;
   left: 0;
   overflow: hidden;
-  width: 750px;
+  width: 100%;
   height: 130px;
   padding-top: 50px;
   background-color: ${`var(--color-bg-${config.theme})`};
@@ -92,7 +92,7 @@ const FrameStyled = styled.div`
   position: absolute;
   top: 0;
   left: 0;
-  width: 750px;
+  width: 100%;
   min-height: 600px;
   height: 42px;
   text-align: left;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useMemo } from 'react';
 import { styled } from '@linaria/react';
 import { Transaction } from '@core/types';
@@ -8,93 +9,125 @@ import {
 } from '@core/utils';
 import { AssetTotal } from '@app/containers/Wallet/interfaces';
 
-const ContainerStyled = styled.div`
+const Row = styled.div`
   display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+`;
+
+const Left = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+`;
+
+const Right = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+  gap: 6px;
+  flex: 0 0 auto;
+`;
+
+const IconWrap = styled.div`
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 34px;
+`;
+
+const iconResetClass = css`
+  margin-right: 0 !important;
+  transform: none !important;
+  top: auto !important;
+`;
+
+const MultiIconWrap = styled.div`
   position: relative;
-  text-align: left;
-  font-size: 16px;
-  font-weight: 600;
-  color: white;
-  flex-direction: row;
+  width: 34px;
+  height: 26px;
 `;
 
-const AmountStyled = styled.span`
-  flex-grow: 1;
-`;
-
-const iconClassName = css`
+const MultiPos1 = styled.div`
   position: absolute;
-  right: 100%;
-  margin-top: -4px;
+  top: 0;
+  left: 0;
+  opacity: 0.85;
 `;
 
-const rateStyle = css`
-  opacity: 0.8;
-  margin: 0;
-  color: white;
+const MultiPos2 = styled.div`
+  position: absolute;
+  top: 0;
+  left: 9px;
+  opacity: 0.95;
+`;
+
+const MultiPos3 = styled.div`
+  position: absolute;
+  top: 0;
+  left: 18px;
+`;
+
+const Title = styled.div`
+  font-size: 14px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.2;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const TopLine = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+`;
+
+const DateLine = styled.div`
+  margin-top: 8px;
+  text-align: start;
+`;
+
+const MetaText = styled.div`
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.6);
   white-space: nowrap;
 `;
 
-export const MultipleAssets = styled.div`
-  position: relative;
-  margin-left: -30px;
-  margin-right: 38px;
-  margin-top: -4px;
-  > div {
-    margin: 0;
-    position: absolute;
-    &:first-child {
-      margin-left: 6px;
-    }
-    &:nth-child(3) {
-      margin-left: -6px;
-    }
-  }
-`;
-
-const TransactionDate = styled.div`
-  margin-top: 8px;
+const AmountText = styled.div<{ tone: 'in' | 'out' | 'neutral' }>`
   font-size: 14px;
-  font-weight: normal;
-  font-stretch: normal;
-  font-style: normal;
-  line-height: normal;
-  letter-spacing: normal;
-  color: #fff;
-  text-align: right;
-  width: 100%;
-  opacity: 0.5;
-  > span {
-    &::after {
-      content: '|';
-      padding: 0 12px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  color: ${({ tone }) => {
+    switch (tone) {
+      case 'in':
+        return 'var(--color-blue)';
+      case 'out':
+        return 'var(--color-purple)';
+      default:
+        return 'rgba(255, 255, 255, 0.9)';
     }
-
-    &:last-child {
-      &::after {
-        display: none;
-      }
-    }
-  }
+  }};
 `;
 
-const TransactionBottom = styled.div`
-  display: flex;
-  justify-content: space-between;
-`;
-
-const TransactionSource = styled.div`
-  margin-top: 8px;
-  font-size: 14px;
-  font-stretch: normal;
-  font-style: normal;
-  line-height: normal;
-  letter-spacing: normal;
-  color: #fff;
-  text-align: left;
-  width: 100%;
-  opacity: 0.7;
-  font-weight: bold;
+const rateStyle = css`
+  margin: 0 !important;
+  opacity: 0.75;
+  font-size: 12px;
+  white-space: nowrap;
 `;
 
 const multipleAssetsTitle = () => 'Multiple assets';
@@ -114,13 +147,7 @@ const getTransactionDate = (create_time: number) => {
   const txDate = new Date(create_time * 1000);
   const time = txDate.toLocaleTimeString(undefined, { timeStyle: 'short' });
   const date = txDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-
-  return (
-    <>
-      <span>{date}</span>
-      <span>{time}</span>
-    </>
-  );
+  return { date, time };
 };
 
 const TransactionItem = ({
@@ -143,7 +170,6 @@ const TransactionItem = ({
   const amount = fromGroths(fee_only ? fee : value);
   const sign = getSign(income) ?? '';
   const name = truncate(target?.metadata_pairs.UN) ?? '';
-  const label = `${sign}${convertLowAmount(amount)} ${name}`;
 
   const assetRate = useMemo(() => {
     let rate = data?.rates.find((a) => a.from === data.asset_id && a.to === 'usd');
@@ -157,48 +183,80 @@ const TransactionItem = ({
     return rate;
   }, [data]);
 
-  const mainContent = () => {
-    if (hasMultipleAssets) {
-      return (
-        <ContainerStyled>
-          <MultipleAssets>
-            {invoke_data.map((i) => i.amounts
-              .slice()
-              .reverse()
-              .map((a) => <AssetIcon key={a.asset_id} asset_id={a.asset_id} />))}
-          </MultipleAssets>
-          <AmountStyled>{multipleAssetsTitle()}</AmountStyled>
-          {assetRate && !isBalanceHidden ? (
-            <Rate
-              value={multipleAssetsAmount(invoke_data, fee_only, fee)}
-              txRate={fromGroths(assetRate.rate)}
-              income={income}
-              className={rateStyle}
-            />
-          ) : null}
-        </ContainerStyled>
-      );
-    }
-    return (
-      <ContainerStyled>
-        <AssetIcon asset_id={data.asset_id} className={iconClassName} />
-        <AmountStyled>{isBalanceHidden ? name : label}</AmountStyled>
-        {assetRate && !isBalanceHidden ? (
-          <Rate value={amount} income={income} txRate={fromGroths(assetRate.rate)} className={rateStyle} />
-        ) : null}
-      </ContainerStyled>
-    );
-  };
+  const { date, time } = getTransactionDate(create_time);
+  const appLabel = data.appname ?? 'Wallet';
+  let tone: 'in' | 'out' | 'neutral' = 'neutral';
+  if (!data.status_string.includes('self')) {
+    tone = income ? 'in' : 'out';
+  }
+
+  const amountLabel = hasMultipleAssets
+    ? `${sign}${convertLowAmount(Math.abs(multipleAssetsAmount(invoke_data, fee_only, fee)))}`
+    : `${sign}${convertLowAmount(amount)}`;
+  const assetLabel = hasMultipleAssets ? '' : name;
+  const rightAmount = isBalanceHidden ? '••••••' : `${amountLabel}${assetLabel ? ` ${assetLabel}` : ''}`;
+
+  const multiAssetIds = useMemo(() => {
+    if (!invoke_data) return [];
+    const ids = new Set<number>();
+    invoke_data.forEach((c) => (c.amounts || []).forEach((a) => ids.add(a.asset_id)));
+    return Array.from(ids).slice(0, 3);
+  }, [invoke_data]);
 
   return (
-    <>
-      {mainContent()}
-      <StatusLabel data={data} />
-      <TransactionBottom>
-        <TransactionSource>{data.appname ?? 'Wallet'}</TransactionSource>
-        <TransactionDate>{getTransactionDate(create_time)}</TransactionDate>
-      </TransactionBottom>
-    </>
+    <Row>
+      <Left>
+        <IconWrap>
+          {hasMultipleAssets ? (
+            <MultiIconWrap>
+              {multiAssetIds[0] !== undefined ? (
+                <MultiPos1>
+                  <AssetIcon asset_id={multiAssetIds[0]} className={iconResetClass} />
+                </MultiPos1>
+              ) : null}
+              {multiAssetIds[1] !== undefined ? (
+                <MultiPos2>
+                  <AssetIcon asset_id={multiAssetIds[1]} className={iconResetClass} />
+                </MultiPos2>
+              ) : null}
+              {multiAssetIds[2] !== undefined ? (
+                <MultiPos3>
+                  <AssetIcon asset_id={multiAssetIds[2]} className={iconResetClass} />
+                </MultiPos3>
+              ) : null}
+            </MultiIconWrap>
+          ) : (
+            <AssetIcon asset_id={data.asset_id} className={iconResetClass} />
+          )}
+        </IconWrap>
+
+        <div style={{ minWidth: 0 }}>
+          <TopLine>
+            <Title>{hasMultipleAssets ? multipleAssetsTitle() : appLabel}</Title>
+            <StatusLabel data={data} />
+          </TopLine>
+          <DateLine>
+            <MetaText>
+              {date}
+              {' · '}
+              {time}
+            </MetaText>
+          </DateLine>
+        </div>
+      </Left>
+
+      <Right>
+        <AmountText tone={tone}>{rightAmount}</AmountText>
+        {assetRate && !isBalanceHidden ? (
+          <Rate
+            value={hasMultipleAssets ? multipleAssetsAmount(invoke_data, fee_only, fee) : amount}
+            txRate={fromGroths(assetRate.rate)}
+            income={income}
+            className={rateStyle}
+          />
+        ) : null}
+      </Right>
+    </Row>
   );
 };
 

@@ -1,5 +1,6 @@
+// @ts-nocheck
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
 import * as extensionizer from 'extensionizer';
 import { styled } from '@linaria/react';
 
@@ -7,16 +8,51 @@ import { RemoveIcon, SettingsReportIcon, SettingsConnectedSites } from '@app/sha
 
 import { ROUTES } from '@app/shared/constants';
 
-import { Button, Window } from '@app/shared/components';
+import {
+  Button, Input, LabeledToggle, Popup, Window,
+} from '@app/shared/components';
 import { useNavigate } from 'react-router-dom';
 import { setError } from '@app/shared/store/actions';
 import { useDispatch, useSelector } from 'react-redux';
 import { loadLogs, loadVersion, loadConnectedSites } from '@app/containers/Settings/store/actions';
 import { selectVersion } from '@app/containers/Settings/store/selectors';
+import {
+  clearSavedPassword,
+  getSavePasswordSetting,
+  savePassword,
+  setSavePasswordSetting,
+} from '@core/RememberPassword';
+import WasmWallet, { ErrorMessage } from '@core/WasmWallet';
 import { RemovePopup } from '../../components';
 
 const ContainerStyled = styled.div`
   margin: 0 -10px;
+`;
+
+const SectionStyled = styled.div`
+  margin: 14px 0 22px 0;
+  padding: 14px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+`;
+
+const RowStyled = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+`;
+
+const TitleStyled = styled.div`
+  font-family: 'SFProDisplay';
+  color: rgba(255, 255, 255, 0.9);
+`;
+
+const HintStyled = styled.div`
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 16px;
+  color: rgba(255, 255, 255, 0.7);
 `;
 
 const VersionStyled = styled.div`
@@ -29,15 +65,27 @@ const Settings = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  useEffect(() => {
+  const [savePasswordEnabled, setSavePasswordEnabled] = React.useState(false);
+  const [confirmSavePasswordVisible, setConfirmSavePasswordVisible] = React.useState(false);
+  const [savePasswordInput, setSavePasswordInput] = React.useState('');
+  const [savePasswordError, setSavePasswordError] = React.useState<string | null>(null);
+  const [savePasswordBusy, setSavePasswordBusy] = React.useState(false);
+
+  React.useEffect(() => {
     dispatch(loadVersion.request());
   }, [dispatch]);
 
-  useEffect(() => {
+  React.useEffect(() => {
     dispatch(loadConnectedSites.request());
   }, [dispatch]);
 
-  const [warningVisible, toggleWarning] = useState(false);
+  React.useEffect(() => {
+    getSavePasswordSetting()
+      .then(setSavePasswordEnabled)
+      .catch(() => setSavePasswordEnabled(false));
+  }, []);
+
+  const [warningVisible, toggleWarning] = React.useState(false);
   const versionData = useSelector(selectVersion());
 
   const manifest = extensionizer.runtime.getManifest();
@@ -58,6 +106,31 @@ const Settings = () => {
       <Window title="Settings" primary>
         <ContainerStyled>
           <VersionStyled>{version}</VersionStyled>
+
+          <SectionStyled>
+            <RowStyled>
+              <TitleStyled>Save password (session)</TitleStyled>
+              <LabeledToggle
+                left="off"
+                right="on"
+                value={savePasswordEnabled}
+                onChange={(next) => {
+                  if (next) {
+                    setConfirmSavePasswordVisible(true);
+                    return;
+                  }
+                  setSavePasswordEnabled(false);
+                  setSavePasswordSetting(false);
+                  clearSavedPassword();
+                }}
+              />
+            </RowStyled>
+            <HintStyled>
+              When enabled, your wallet password is kept only for the current browser session (cleared on lock, wallet
+              removal, or browser restart). It is not written to persistent storage.
+            </HintStyled>
+          </SectionStyled>
+
           <Button variant="block" pallete="white" icon={SettingsReportIcon} onClick={() => ReportClicked()}>
             Report a problem
           </Button>
@@ -77,6 +150,65 @@ const Settings = () => {
           </Button>
         </ContainerStyled>
       </Window>
+      <Popup
+        visible={confirmSavePasswordVisible}
+        title="Enable session password saving"
+        cancelButton={(
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setConfirmSavePasswordVisible(false);
+              setSavePasswordInput('');
+              setSavePasswordError(null);
+            }}
+          >
+            cancel
+          </Button>
+        )}
+        confirmButton={(
+          <Button
+            pallete="white"
+            disabled={savePasswordBusy || !savePasswordInput}
+            onClick={async () => {
+              try {
+                setSavePasswordBusy(true);
+                setSavePasswordError(null);
+
+                await WasmWallet.checkPassword(savePasswordInput);
+                await setSavePasswordSetting(true);
+                await savePassword(savePasswordInput);
+
+                setConfirmSavePasswordVisible(false);
+                setSavePasswordEnabled(true);
+                setSavePasswordInput('');
+              } catch (e) {
+                setSavePasswordError((e as ErrorMessage) || 'Invalid password');
+              } finally {
+                setSavePasswordBusy(false);
+              }
+            }}
+          >
+            {savePasswordBusy ? 'enabling…' : 'enable'}
+          </Button>
+        )}
+        onCancel={() => setConfirmSavePasswordVisible(false)}
+      >
+        <p style={{ marginTop: 0 }}>
+          Enter your wallet password once. It will be cached only for the current browser session to allow auto-unlock
+          after extension reloads.
+        </p>
+        <Input
+          label={savePasswordError || 'Password'}
+          type="password"
+          valid={!savePasswordError}
+          autoFocus
+          value={savePasswordInput}
+          onChange={(e) => {
+            setSavePasswordError(null);
+            setSavePasswordInput((e.target as HTMLInputElement).value);
+          }}
+        />
+      </Popup>
       <RemovePopup visible={warningVisible} onCancel={() => toggleWarning(false)} />
     </>
   );

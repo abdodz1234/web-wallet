@@ -11,6 +11,9 @@ import {
 } from '@core/types';
 import NotificationController from '@core/NotificationController';
 import { DatabaseSyncProgress, SyncStep } from '@app/containers/Auth/interfaces';
+import {
+  clearSavedPassword, getSavedPassword, getSavePasswordSetting, savePassword,
+} from '@core/RememberPassword';
 
 import { actions } from '.';
 import store from '../../../../index';
@@ -34,6 +37,26 @@ export function* handleConnect({ notification, is_running, onboarding }: Connect
     yield put(navigate(ROUTES.AUTH.BASE));
     return;
   }
+
+  // Auto-unlock (session only) when user explicitly enabled it in Settings.
+  // This avoids persisting plaintext password to disk while still preventing
+  // popup reloads / navigation from forcing re-entry during the same session.
+  if (!is_running) {
+    try {
+      const enabled = (yield call(getSavePasswordSetting) as unknown) as boolean;
+      if (enabled) {
+        const pass = (yield call(getSavedPassword) as unknown) as string | null;
+        if (pass) {
+          yield put(setError(null));
+          yield put(actions.startWallet.request(pass));
+          return;
+        }
+      }
+    } catch {
+      // ignore auto-unlock failures; fall back to normal navigation
+    }
+  }
+
   if (notification) {
     NotificationController.setNotification(notification);
     if (notification.type === NotificationType.AUTH) {
@@ -133,9 +156,21 @@ export function* handleDatabaseRestore(payload: DatabaseSyncProgress) {
 function* startWalletSaga(action: ReturnType<typeof actions.startWallet.request>): Generator {
   try {
     yield put(navigate(ROUTES.AUTH.PROGRESS));
-    wallet.start(action.payload);
+
+    // Validate password first to provide reliable UX and to avoid starting the wallet with an invalid password.
+    yield call(() => WasmWallet.checkPassword(action.payload));
+    yield call([wallet, wallet.start], action.payload);
+
+    const enabled = (yield call(getSavePasswordSetting) as unknown) as boolean;
+    if (enabled) {
+      yield call(savePassword, action.payload);
+    } else {
+      yield call(clearSavedPassword);
+    }
     // yield call(startWallet, action.payload);
   } catch (e) {
+    // If saved password was invalid/stale, clear it so we don't loop on auto-unlock.
+    yield call(clearSavedPassword);
     yield put(setError(e));
     yield put(actions.startWallet.failure(e));
     yield put(navigate(ROUTES.AUTH.LOGIN));

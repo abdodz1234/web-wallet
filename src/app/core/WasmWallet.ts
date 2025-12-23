@@ -1,8 +1,6 @@
 import * as extensionizer from 'extensionizer';
 import * as passworder from 'browser-passworder';
 
-import PortStream from '@core/PortStream';
-
 import { GROTHS_IN_BEAM } from '@app/containers/Wallet/constants';
 import config from '@app/config';
 
@@ -13,7 +11,6 @@ import {
   BackgroundEvent, CreateWalletParams, Notification, RPCEvent, RPCMethod, WalletMethod,
 } from './types';
 import NotificationManager from './NotificationManager';
-import DnodeApp from './DnodeApp';
 
 declare const BeamModule: any;
 
@@ -71,8 +68,6 @@ export default class WasmWallet {
 
   private counter = 0;
 
-  private passwordHash: string;
-
   private contractInfoHandler;
 
   private contractInfoHandlerCallback;
@@ -81,8 +76,9 @@ export default class WasmWallet {
 
   private sendHandlerCallback;
 
-  // TODO:BRO map [url->app]
-  private apps = {};
+  private apps: Record<string, { appApi: any; appname: string; appurl: string }> = {};
+
+  private externalAppMessageHandler: ((appurl: string, json: string) => void) | null = null;
 
   private connectedApps = [];
 
@@ -92,6 +88,39 @@ export default class WasmWallet {
     }
     this.instance = new WasmWallet();
     return this.instance;
+  }
+
+  setExternalAppMessageHandler(handler: (appurl: string, json: string) => void) {
+    this.externalAppMessageHandler = handler;
+  }
+
+  private emitToExternalApp(appurl: string, payload: any) {
+    if (!this.externalAppMessageHandler) return;
+    const json = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    this.externalAppMessageHandler(appurl, json);
+  }
+
+  callExternalWalletApi(appurl: string, req: { id: string; method: string; params?: any }) {
+    const app = this.apps[appurl];
+    if (!app || !app.appApi) return false;
+
+    if (localStorage.getItem('locked')) {
+      this.emitToExternalApp(appurl, {
+        jsonrpc: '2.0',
+        id: req.id,
+        error: { code: -5, message: 'Wallet is locked' },
+      });
+      return true;
+    }
+
+    const request = {
+      jsonrpc: '2.0',
+      id: req.id,
+      method: req.method,
+      params: req.params,
+    };
+    app.appApi.callWalletApi(JSON.stringify(request));
+    return true;
   }
 
   static async mount(): Promise<boolean> {
@@ -305,8 +334,8 @@ export default class WasmWallet {
           if (!notificationManager.notification.params.is_reconnect) {
             this.connectExternal(notificationManager.notification.params);
           } else {
-            Object.values(this.apps).forEach((url: string) => {
-              this.apps[url].walletUnlocked();
+            Object.keys(this.apps).forEach((url: string) => {
+              this.emitToExternalApp(url, JSON.stringify({ is_locked: false }));
             });
           }
           this.emit(BackgroundEvent.CLOSE_NOTIFICATION);
@@ -428,7 +457,6 @@ export default class WasmWallet {
     if (this.apps[url]) {
       this.apps[url].appApi.delete();
       delete this.apps[url].appApi;
-      delete this.apps[url].appApiHandler;
       delete this.apps[url];
     }
   }
@@ -560,18 +588,32 @@ export default class WasmWallet {
       // TODO:BRO handle error in Utils.js
     }
     try {
-      this.apps[params.appurl] = new DnodeApp();
-      await this.apps[params.appurl].createAppAPI(
-        WasmWallet.getInstance(),
+      const appApi = await this.createAppAPI(
         params.apiver,
         params.apivermin,
-        params.appname,
         params.appurl,
+        params.appname,
+        (json: string) => {
+          if (!localStorage.getItem('locked')) {
+            this.emitToExternalApp(params.appurl, json);
+          } else {
+            this.emitToExternalApp(
+              params.appurl,
+              JSON.stringify({
+                error: true,
+                errcode: -5,
+                errormsg: 'Wallet is locked',
+              }),
+            );
+          }
+        },
       );
-      const port = NotificationManager.getPort();
 
-      const portStream = new PortStream(port);
-      this.apps[params.appurl].connectPage(portStream, params.appurl);
+      this.apps[params.appurl] = {
+        appApi,
+        appname: params.appname,
+        appurl: params.appurl,
+      };
       return notificationManager.postMessage({
         result: true,
       });
@@ -592,8 +634,15 @@ export default class WasmWallet {
   }
 
   lockWallet() {
-    Object.values(this.apps).forEach((url: string) => {
-      this.apps[url].walletIsLocked();
+    Object.keys(this.apps).forEach((url: string) => {
+      this.emitToExternalApp(
+        url,
+        JSON.stringify({
+          error: true,
+          errcode: -5,
+          errormsg: 'Wallet is locked',
+        }),
+      );
     });
   }
 
@@ -767,8 +816,15 @@ export default class WasmWallet {
         this.emit(id, WasmWallet.loadLogs());
         break;
       case WalletMethod.WalletLocked:
-        Object.values(this.apps).forEach((url: string) => {
-          this.apps[url].walletIsLocked();
+        Object.keys(this.apps).forEach((url: string) => {
+          this.emitToExternalApp(
+            url,
+            JSON.stringify({
+              error: true,
+              errcode: -5,
+              errormsg: 'Wallet is locked',
+            }),
+          );
         });
 
         break;

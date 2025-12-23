@@ -4,7 +4,7 @@ import React, { useEffect } from 'react';
 
 import { checkIsAllowedSeed } from '@app/containers/Auth/store/actions';
 import { SEED_PHRASE_COUNT } from '@app/containers/Auth/store/reducer';
-import store from '../../../../../index';
+import store from '@app/store/rootStore';
 
 interface SeedListProps {
   data: any[];

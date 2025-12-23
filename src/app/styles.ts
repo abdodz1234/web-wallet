@@ -105,13 +105,18 @@ css`
 
     html,
     body {
-      margin: 0 auto;
+      margin: 0;
       padding: 0;
     }
 
     html {
-      width: 750px;
+      width: 100%;
       height: 100%;
+    }
+
+    html[data-env='popup'] {
+      width: 750px;
+      margin: 0 auto;
     }
 
     html * {
@@ -122,6 +127,13 @@ css`
       background-color: ${`var(--color-bg-${config.theme})`};
       font-size: 14px;
       color: white;
+      width: 100%;
+      height: 100%;
+    }
+
+    #root {
+      width: 100%;
+      height: 100%;
     }
 
     p {

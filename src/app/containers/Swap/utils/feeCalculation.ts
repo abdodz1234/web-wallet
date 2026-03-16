@@ -1,0 +1,156 @@
+/**
+ * Fee calculation utilities
+ * Moved from bridge-app/src/app/core/appUtils.ts
+ */
+
+import { BigNumber as EthersBigNumber, utils as ethersUtils } from 'ethers';
+
+const GWEI_IN_ETH = 10 ** 9;
+const RELAY_COSTS_IN_GAS = 120000;
+
+export interface GasPrice {
+  type: any;
+  hex: string;
+}
+
+export interface GasPriceItem {
+  lastBaseFeePerGas?: GasPrice;
+  maxFeePerGas?: GasPrice;
+  maxPriorityFeePerGas?: GasPrice;
+  gasPrice?: GasPrice;
+}
+
+export interface RelayFeeParams {
+  baseCurrencyPriceInUSD: number;
+  currencyPriceInUSD: number;
+  gasPrice: number;
+  currencyDecimals: number;
+}
+
+export interface GasPriceResponse {
+  [network: string]: GasPriceItem;
+}
+
+export interface RatesApiResponse {
+  [currency: string]: {
+    usd: number;
+  };
+}
+
+/**
+ * Calculate relayer fee based on gas prices and exchange rates
+ * @param params - Fee calculation parameters
+ * @returns Relayer fee in BEAM
+ */
+export function calcRelayFee(params: RelayFeeParams): number {
+  const relayCostsInUSD = (RELAY_COSTS_IN_GAS * params.gasPrice * params.baseCurrencyPriceInUSD) / GWEI_IN_ETH;
+  const RELAY_SAFETY_COEFF = 2;
+  const result = (RELAY_SAFETY_COEFF * relayCostsInUSD) / params.currencyPriceInUSD;
+
+  return result;
+}
+
+/**
+ * Extract gas price from fee data
+ * @param feeData - Gas price data from API
+ * @param debugNetwork - Optional network name for debugging
+ * @returns Gas price in Gwei
+ */
+export function getGasPrice(feeData: GasPriceItem, debugNetwork?: string): number {
+  // Parse hex-encoded wei values safely (no JS number precision issues).
+  const baseWei = EthersBigNumber.from(feeData.gasPrice?.hex ?? 0);
+  const rawPriorityWei = EthersBigNumber.from(feeData.maxPriorityFeePerGas?.hex ?? 0);
+  // Arbitrum: ignore priority fee.
+  const priorityWei = debugNetwork === 'arbitrum' ? EthersBigNumber.from(0) : rawPriorityWei;
+
+  // Apply safety factor (1.2x) using integer math; ceil to avoid underestimating.
+  const baseWithSafetyWei = baseWei.mul(12).add(9).div(10);
+  const totalWei = baseWithSafetyWei.add(priorityWei);
+
+  // Convert wei -> gwei as a float for downstream USD fee calc.
+  const totalGwei = parseFloat(ethersUtils.formatUnits(totalWei, 9));
+
+  return totalGwei;
+}
+
+/**
+ * Fetch gas prices from API
+ */
+export async function loadGasPricesApiCall(): Promise<GasPriceResponse | null> {
+  try {
+    const API_URL = 'https://explorer-api.beam.mw/bridges';
+    const response = await fetch(`${API_URL}/gasprices`);
+    return await response.json();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to load gas prices:', error);
+    return null;
+  }
+}
+
+/**
+ * Fetch exchange rates from API
+ */
+export async function loadRatesCached(): Promise<RatesApiResponse | null> {
+  try {
+    const API_URL = 'https://explorer-api.beam.mw/bridges';
+    const response = await fetch(`${API_URL}/rates`);
+    if (response.status === 200) {
+      return await response.json();
+    }
+    return null;
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Failed to load rates:', error);
+    return null;
+  }
+}
+
+/**
+ * Calculate relayer fees for all networks
+ * @param rates - Exchange rates
+ * @param currencyRateId - Currency rate ID (e.g., 'beam')
+ * @param ethRateId - Ethereum rate ID (e.g., 'ethereum')
+ * @returns Map of network to relayer fee
+ */
+export async function calculateRelayerFees(
+  rates: RatesApiResponse,
+  currencyRateId: string,
+  ethRateId: string,
+  currencyDecimals: number = 8,
+): Promise<Record<string, number>> {
+  const gasPricesResponse = await loadGasPricesApiCall();
+  if (!gasPricesResponse) {
+    return {};
+  }
+
+  const currencyRateUSD = rates?.[currencyRateId]?.usd;
+  const baseRateUSD = rates?.[ethRateId]?.usd;
+
+  if (!currencyRateUSD || !baseRateUSD) {
+    // eslint-disable-next-line no-console
+    console.warn('Missing rates, cannot compute relay fees', {
+      currencyRateId,
+      currencyRateUSD,
+      baseRateId: ethRateId,
+      baseRateUSD,
+    });
+    return {};
+  }
+
+  const fees = Object.entries(gasPricesResponse).map(([network, gasPriceValue]) => {
+    const gasPrice = getGasPrice(gasPriceValue, network);
+
+    const feeParams: RelayFeeParams = {
+      gasPrice,
+      currencyPriceInUSD: currencyRateUSD,
+      baseCurrencyPriceInUSD: baseRateUSD,
+      currencyDecimals,
+    };
+
+    const relayFee = calcRelayFee(feeParams);
+    return [network, relayFee];
+  });
+
+  return Object.fromEntries(fees);
+}

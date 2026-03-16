@@ -38,6 +38,9 @@ export const ROUTES = {
   DEX: {
     BASE: '/dex',
   },
+  SWAP: {
+    BASE: '/swap',
+  },
 };
 
 export const ROUTES_PATH = {

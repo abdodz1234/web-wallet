@@ -3,3 +3,4 @@ export * from './Notifications';
 export * from './Settings';
 export * from './Wallet';
 export * from './Dex';
+export * from './Swap';

@@ -26,6 +26,9 @@ const config = {
     alias: {
       'process/browser': require.resolve('process/browser.js'),
     },
+    fallback: {
+      buffer: require.resolve('buffer'),
+    },
     plugins: [new TsconfigPathsPlugin()],
   },
   module: {
@@ -106,6 +109,7 @@ const config = {
     }),
     new webpack.ProvidePlugin({
       process: 'process/browser.js',
+      Buffer: ['buffer', 'Buffer'],
     }),
   ],
   externals: ['fs'],

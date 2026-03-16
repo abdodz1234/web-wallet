@@ -36,6 +36,7 @@ export enum RPCMethod {
   TxStatus = 'tx_status',
   ExportPaymentProof = 'export_payment_proof',
   VerifyPaymentProof = 'verify_payment_proof',
+  InvokeContract = 'invoke_contract',
 }
 
 export enum WalletMethod {

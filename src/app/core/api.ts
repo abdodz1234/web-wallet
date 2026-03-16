@@ -439,3 +439,126 @@ export async function getAssetsInfo(asset_ids: number[]) {
 export function getAssetList({ refresh }: { refresh: boolean }) {
   return postMessage<Asset[]>(RPCMethod.AssetsList, { refresh });
 }
+
+export interface InvokeContractParams {
+  args: string;
+  contract: number[];
+  create_tx?: boolean;
+  appurl?: string;
+  appname?: string;
+}
+
+// Store pending contract calls by call ID
+const pendingContractCalls: Map<
+string,
+{
+  resolve: (value: any) => void;
+  reject: (error: any) => void;
+}
+> = new Map();
+
+let internalCallId = 0;
+
+// Store internal app APIs by appurl
+const internalAppAPIs: Map<string, any> = new Map();
+
+/**
+ * Create an internal app API connection for contract invocations
+ * This is required before calling invokeContract
+ * Uses the same flow as external dApps via SDK
+ */
+export async function createInternalAppAPI(
+  appurl: string,
+  appname: string,
+  apiver: string = '6.2',
+  apivermin: string = '6.2',
+): Promise<void> {
+  // Check if already created
+  if (internalAppAPIs.has(appurl)) {
+    return;
+  }
+
+  // Create the app API connection with a handler for internal responses
+  // Same pattern as SDK: createAppAPI -> setHandler -> callWalletApi
+  const appApi = await (wallet as any).createAppAPI(apiver, apivermin, appurl, appname, (json: string) => {
+    // Handler for API responses - same as SDK flow
+    try {
+      const response = JSON.parse(json);
+      if (response.id && pendingContractCalls.has(String(response.id))) {
+        const { resolve, reject } = pendingContractCalls.get(String(response.id))!;
+        pendingContractCalls.delete(String(response.id));
+        if (response.error) {
+          reject(response.error);
+        } else {
+          resolve(response.result);
+        }
+      }
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to parse API response:', e, json);
+    }
+  });
+
+  // Store the app API for internal use
+  internalAppAPIs.set(appurl, appApi);
+}
+
+/**
+ * Get internal app API by appurl
+ */
+export function getInternalAppAPI(appurl: string): any {
+  return internalAppAPIs.get(appurl);
+}
+
+/**
+ * Invoke contract using app API (same flow as SDK)
+ * This matches the skeleton-dapp flow: create app API -> callWalletApi -> handle response
+ */
+export async function invokeContract(params: InvokeContractParams) {
+  const { appurl, appname, ...invokeParams } = params;
+
+  if (!appurl || !appname) {
+    throw new Error('appurl and appname are required for contract invocations');
+  }
+
+  // Ensure the app API is created (same as SDK's client initialization)
+  await createInternalAppAPI(appurl, appname);
+
+  // Get the app API (same as callExternalWalletApi does)
+  const appApi = internalAppAPIs.get(appurl);
+  if (!appApi) {
+    throw new Error(`App API not found for ${appurl}`);
+  }
+
+  // Create JSON-RPC request (same format as SDK)
+  const callId = `internal-${internalCallId}`;
+  internalCallId += 1;
+
+  const request = {
+    jsonrpc: '2.0',
+    id: callId,
+    method: 'invoke_contract',
+    params: {
+      args: invokeParams.args,
+      contract: invokeParams.contract,
+      create_tx: invokeParams.create_tx ?? false,
+    },
+  };
+
+  // Call via app API's callWalletApi (same as SDK flow)
+  return new Promise<any>((resolve, reject) => {
+    // Store the promise resolvers
+    pendingContractCalls.set(callId, { resolve, reject });
+
+    // Call the app API (same as callExternalWalletApi does)
+    appApi.callWalletApi(JSON.stringify(request));
+
+    // Timeout after 30 seconds
+    setTimeout(() => {
+      if (pendingContractCalls.has(callId)) {
+        pendingContractCalls.delete(callId);
+        reject(new Error('Contract invocation timeout'));
+      }
+    }, 30000);
+  });
+}

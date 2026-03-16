@@ -65,7 +65,7 @@ export const WalletActions = ({ selected_asset_id, className, buttonClassName }:
     if (selected_asset_id) {
       dispatch(setSelectedAssetId(selected_asset_id));
     }
-    navigate(ROUTES.DEX.BASE);
+    navigate(ROUTES.SWAP.BASE);
   };
 
   const navigateToReceive = () => {

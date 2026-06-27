@@ -1,85 +1,130 @@
 import React from 'react';
 import { styled } from '@linaria/react';
-
-import AssetLabel from '@app/shared/components/AssetLabel';
+import { css } from '@linaria/core';
+import { convertLowAmount, fromGroths, truncate } from '@core/utils';
+import { AssetIcon, Rate } from '@app/shared/components';
 import { PALLETE_ASSETS, ROUTES } from '@app/shared/constants';
 import { AssetTotal } from '@app/containers/Wallet/interfaces';
 import { useNavigate } from 'react-router-dom';
 
-const ListStyled = styled.ul`
-  margin: 0 -20px;
-  padding: 0 8px;
+const List = styled.ul`
   display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+`;
+
+const Tile = styled.li`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.13);
+    transform: translateY(-1px);
+  }
+`;
+
+const IconBox = styled.div<{ boxColor: string }>`
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: ${({ boxColor }) => `${boxColor}1a`};
+`;
+
+const iconClass = css`
+  margin-right: 0 !important;
+  transform: none !important;
+  top: auto !important;
+  vertical-align: middle !important;
+`;
+
+const Info = styled.div`
+  flex: 1;
+  min-width: 0;
+`;
+
+const AssetName = styled.div`
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 2px;
+`;
+
+const Amount = styled.div`
+  font-size: 15px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+`;
+
+const rateClass = css`
+  margin: 0 !important;
+  margin-top: 0 !important;
+  font-size: 12px !important;
+  color: rgba(255, 255, 255, 0.35) !important;
+  font-weight: 500 !important;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: center;
 `;
 
 interface AssetsProps {
   data: AssetTotal[];
   isBalanceHidden?: boolean;
-  listClassName?: string;
-  assetClassName?: string;
 }
 
-const ListItemStyled = styled.li<{ opt_color?: string; asset_id: number }>`
-  margin-bottom: 10px;
-  position: relative;
-  padding: 20px;
-  padding-left: 56px;
-  width: 49%;
-  min-height: 80px;
+function getColor(asset_id: number, opt_color?: string): string {
+  if (opt_color) return opt_color;
+  return PALLETE_ASSETS[asset_id] ?? PALLETE_ASSETS[asset_id % PALLETE_ASSETS.length];
+}
 
-  &.full-width {
-    width: 100%;
-  }
-  &:before {
-    opacity: 0.3;
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: -1;
-    width: 100%;
-    height: 100%;
-    border-radius: 10px;
-    background-image: linear-gradient(
-      90deg,
-      ${({ asset_id, opt_color }) => {
-    if (opt_color) {
-      return opt_color;
-    }
-
-    return PALLETE_ASSETS[asset_id] ? PALLETE_ASSETS[asset_id] : PALLETE_ASSETS[asset_id % PALLETE_ASSETS.length];
-  }}
-        0%,
-      var(--color-dark-blue) 110%
-    );
-  }
-`;
-
-const Assets: React.FC<AssetsProps> = ({
-  data, isBalanceHidden, listClassName, assetClassName,
-}) => {
+const Assets: React.FC<AssetsProps> = ({ data, isBalanceHidden }) => {
   const navigate = useNavigate();
 
-  const navigateToDetail = (asset_id: number) => {
-    navigate(`${ROUTES.ASSETS.DETAIL.replace(':id', '')}${asset_id}`);
-  };
-
   return (
-    <ListStyled className={listClassName}>
-      {data.map(({ asset_id, available, metadata_pairs }) => (
-        <ListItemStyled
-          opt_color={metadata_pairs.OPT_COLOR ? metadata_pairs.OPT_COLOR : null}
-          key={asset_id}
-          asset_id={asset_id}
-          onClick={() => navigateToDetail(asset_id)}
-          className={assetClassName}
-        >
-          <AssetLabel value={available} asset_id={asset_id} isBalanceHidden={isBalanceHidden} />
-        </ListItemStyled>
-      ))}
-    </ListStyled>
+    <List>
+      {data.map(({ asset_id, available, metadata_pairs }) => {
+        const name = truncate(metadata_pairs?.UN) ?? '';
+        const amount = fromGroths(available);
+        const amountLabel = convertLowAmount(amount);
+        const color = getColor(asset_id, metadata_pairs?.OPT_COLOR);
+        const isBeam = name === 'BEAM';
+
+        return (
+          <Tile key={asset_id} onClick={() => navigate(`${ROUTES.ASSETS.DETAIL.replace(':id', '')}${asset_id}`)}>
+            <IconBox boxColor={color}>
+              <AssetIcon asset_id={asset_id} className={iconClass} />
+            </IconBox>
+
+            <Info>
+              <AssetName>{name || `Asset #${asset_id}`}</AssetName>
+              <Amount>{isBalanceHidden ? '••••••' : `${amountLabel}${name ? ` ${name}` : ''}`}</Amount>
+            </Info>
+
+            {isBeam && !isBalanceHidden && <Rate value={amount} className={rateClass} />}
+          </Tile>
+        );
+      })}
+    </List>
   );
 };
 

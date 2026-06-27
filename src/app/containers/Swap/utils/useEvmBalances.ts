@@ -27,8 +27,17 @@ export function useEvmBalances({ wallet, selectedNetwork, assets }: UseEvmBalanc
   const [balances, setBalances] = useState<Record<string, EvmBalance>>({});
   const [isLoading, setIsLoading] = useState(false);
 
+  const walletAddress = wallet?.address ?? null;
+  const walletChainId = wallet?.chainId ?? null;
+
+  // Clear stale balances immediately when the wallet address changes so the UI
+  // never shows a previous account's balances while loading new ones.
+  useEffect(() => {
+    setBalances({});
+  }, [walletAddress]);
+
   const refresh = useCallback(async () => {
-    if (!wallet || wallet.chainId !== Number(selectedNetwork)) {
+    if (!walletAddress || walletChainId !== Number(selectedNetwork)) {
       setBalances({});
       return;
     }
@@ -43,12 +52,12 @@ export function useEvmBalances({ wallet, selectedNetwork, assets }: UseEvmBalanc
       const balanceResults = await Promise.all(
         assets.map(async (asset) => {
           if (asset.kind === 'native') {
-            const raw = await provider.getBalance(wallet.address);
+            const raw = await provider.getBalance(walletAddress);
             return { name: asset.name, raw, decimals: asset.decimals };
           }
           if (asset.ethTokenContract) {
             const tokenContract = new ethers.Contract(asset.ethTokenContract, erc20Abi, provider);
-            const raw = await tokenContract.balanceOf(wallet.address);
+            const raw = await tokenContract.balanceOf(walletAddress);
             return { name: asset.name, raw, decimals: asset.decimals };
           }
           return null;
@@ -56,9 +65,7 @@ export function useEvmBalances({ wallet, selectedNetwork, assets }: UseEvmBalanc
       );
 
       const nextBalances = balanceResults.reduce((acc, item) => {
-        if (!item) {
-          return acc;
-        }
+        if (!item) return acc;
         acc[item.name] = {
           raw: item.raw,
           formatted: ethers.utils.formatUnits(item.raw, item.decimals),
@@ -73,21 +80,18 @@ export function useEvmBalances({ wallet, selectedNetwork, assets }: UseEvmBalanc
     } finally {
       setIsLoading(false);
     }
-  }, [assets, selectedNetwork, wallet]);
+  }, [assets, selectedNetwork, walletAddress, walletChainId]);
 
   useEffect(() => {
     refresh();
 
-    if (!wallet || wallet.chainId !== Number(selectedNetwork)) {
+    if (!walletAddress || walletChainId !== Number(selectedNetwork)) {
       return undefined;
     }
 
-    const interval = setInterval(() => {
-      refresh();
-    }, POLL_INTERVAL);
-
+    const interval = setInterval(refresh, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [refresh, selectedNetwork, wallet]);
+  }, [refresh, selectedNetwork, walletAddress, walletChainId]);
 
   return {
     balances,

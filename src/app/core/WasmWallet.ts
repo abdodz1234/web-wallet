@@ -247,16 +247,15 @@ export default class WasmWallet {
 
   private eventHandler: WalletEventHandler;
 
-  private remoteEventHandler = [];
+  // eslint-disable-next-line no-spaced-func
+  private remoteResponseHandlers = new Map<number | null, (data: any) => void>();
 
-  setRemoteEventHandler(handler: WalletEventHandler) {
-    this.remoteEventHandler.push({ handler, is_done: false });
+  registerResponseHandler(id: number | null, handler: (data: any) => void) {
+    this.remoteResponseHandlers.set(id, handler);
+  }
 
-    this.remoteEventHandler.forEach((item, i) => {
-      if (item.is_done) {
-        this.remoteEventHandler.splice(i, 1);
-      }
-    });
+  removeResponseHandler(id: number | null) {
+    this.remoteResponseHandlers.delete(id);
   }
 
   async init(handler: WalletEventHandler, notification: Notification, is_running?: boolean) {
@@ -313,7 +312,7 @@ export default class WasmWallet {
 
   emit(id: number | RPCEvent | BackgroundEvent, result?: any, error?: any) {
     // eslint-disable-next-line no-console
-    console.info(`emitted event "${id}" with`, result);
+    console.info(`emitted event "${id}"`);
     this.eventHandler({
       id,
       result,
@@ -368,12 +367,9 @@ export default class WasmWallet {
     const responseHandler = (response) => {
       const event = JSON.parse(response);
       this.eventHandler(event);
-      if (this.remoteEventHandler !== undefined) {
-        this.remoteEventHandler.forEach((item) => {
-          const res = item.handler(event);
-          item.is_done = !!res;
-        });
-      }
+      this.remoteResponseHandlers.forEach((handler) => {
+        handler(event);
+      });
     };
 
     this.wallet.startWallet();
@@ -432,7 +428,7 @@ export default class WasmWallet {
   }
 
   removeConnectedSite(site: ExternalAppConnection) {
-    const sites = this.connectedApps.filter((el) => el.appUrl !== site.appUrl && el.appName !== site.appName);
+    const sites = this.connectedApps.filter((el) => el.appUrl !== site.appUrl || el.appName !== site.appName);
 
     this.connectedApps = [...sites];
 
@@ -578,14 +574,16 @@ export default class WasmWallet {
   }
 
   async connectExternal(params) {
-    console.log(params);
     if (!WasmWallet.isAppSupported(params.apiver, params.apivermin)) {
-      return notificationManager.postMessage({
-        result: false,
-        errcode: -1,
-        ermsg: 'Unsupported API version required',
-      });
-      // TODO:BRO handle error in Utils.js
+      notificationManager.sendAuthResponse(
+        {
+          result: false,
+          errcode: -1,
+          ermsg: 'Unsupported API version required',
+        },
+        params.appurl,
+      );
+      return;
     }
     try {
       const appApi = await this.createAppAPI(
@@ -597,13 +595,16 @@ export default class WasmWallet {
           if (!localStorage.getItem('locked')) {
             this.emitToExternalApp(params.appurl, json);
           } else {
+            // Preserve the response id so inpage can resolve/reject the pending call.
+            let id: unknown;
+            try {
+              ({ id } = JSON.parse(json));
+            } catch {
+              /* ignore */
+            }
             this.emitToExternalApp(
               params.appurl,
-              JSON.stringify({
-                error: true,
-                errcode: -5,
-                errormsg: 'Wallet is locked',
-              }),
+              JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -5, message: 'Wallet is locked' } }),
             );
           }
         },
@@ -614,16 +615,16 @@ export default class WasmWallet {
         appname: params.appname,
         appurl: params.appurl,
       };
-      return notificationManager.postMessage({
-        result: true,
-      });
+      notificationManager.sendAuthResponse({ result: true }, params.appurl);
     } catch (err) {
-      // TODO:BRO handle error in Utils.js
-      return notificationManager.postMessage({
-        result: false,
-        errcode: -2,
-        ermsg: err,
-      });
+      notificationManager.sendAuthResponse(
+        {
+          result: false,
+          errcode: -2,
+          ermsg: err,
+        },
+        params.appurl,
+      );
     }
   }
 
@@ -672,14 +673,20 @@ export default class WasmWallet {
   approveConnection(params: any) {
     if (params.result) {
       this.addConnectedSite({ appName: params.appname, appUrl: params.appurl });
-      this.connectExternal(params);
+      this.connectExternal(params).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.error('connectExternal failed after approval:', err);
+      });
       return null;
     }
-    return notificationManager.postMessage({
-      result: false,
-      errcode: -3,
-      ermsg: 'Connection rejected',
-    });
+    return notificationManager.sendAuthResponse(
+      {
+        result: false,
+        errcode: -3,
+        ermsg: 'Connection rejected',
+      },
+      params.appurl,
+    );
   }
 
   notificationApproveInfo(params: any) {
@@ -690,7 +697,7 @@ export default class WasmWallet {
 
   notificationRejectInfo(params: any) {
     if (params.req) {
-      this.contractInfoHandlerCallback.contractInfoApproved(params.req);
+      this.contractInfoHandlerCallback.contractInfoRejected(params.req);
     }
   }
 
@@ -702,7 +709,7 @@ export default class WasmWallet {
 
   notificationRejectSend(params: any) {
     if (params.req) {
-      this.sendHandlerCallback.sendApproved(params.req);
+      this.sendHandlerCallback.sendRejected(params.req);
     }
   }
 
@@ -776,13 +783,19 @@ export default class WasmWallet {
         // eslint-disable-next-line no-case-declarations
         if (params.result) {
           this.addConnectedSite({ appName: params.appname, appUrl: params.appurl });
-          this.connectExternal(params);
-        } else {
-          return notificationManager.postMessage({
-            result: false,
-            errcode: -3,
-            ermsg: 'Connection rejected',
+          this.connectExternal(params).catch((err) => {
+            // eslint-disable-next-line no-console
+            console.error('connectExternal failed in NotificationConnect:', err);
           });
+        } else {
+          notificationManager.sendAuthResponse(
+            {
+              result: false,
+              errcode: -3,
+              ermsg: 'Connection rejected',
+            },
+            params.appurl,
+          );
         }
         break;
       case WalletMethod.LoadConnectedSites:

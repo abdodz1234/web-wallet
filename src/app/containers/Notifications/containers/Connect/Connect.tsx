@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { styled } from '@linaria/react';
 import NotificationController from '@core/NotificationController';
 import NotificationManager from '@core/NotificationManager';
@@ -24,18 +24,25 @@ const StyledApprove = styled.div`
   font-size: 16px;
 `;
 
+const StyledOrigin = styled.div`
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  word-break: break-all;
+`;
+
 const Connect = () => {
   const notification = NotificationController.getNotification();
 
   const notificationManager = NotificationManager.getInstance();
 
-  window.addEventListener('beforeunload', () => {
-    // TODO
-    notificationManager.postMessage({
-      action: 'connect_rejected',
-    });
-    // rejectConnection();
-  });
+  useEffect(() => {
+    const handler = () => {
+      notificationManager.postMessage({ action: 'connect_rejected' });
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [notificationManager]);
 
   return (
     <>
@@ -48,6 +55,12 @@ const Connect = () => {
         is trying to connect
         <br />
         to the BEAM Web Wallet.
+        {notification.params.appurl && (
+          <StyledOrigin>
+            Origin:
+            {notification.params.appurl}
+          </StyledOrigin>
+        )}
       </StyledMessage>
       <StyledApprove>Approve connection?</StyledApprove>
       <Button

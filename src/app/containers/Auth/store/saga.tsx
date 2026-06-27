@@ -69,7 +69,7 @@ export function* handleConnect({ notification, is_running, onboarding }: Connect
       yield put(navigate(is_running ? ROUTES.NOTIFICATIONS.CONNECT : ROUTES.AUTH.LOGIN));
     }
   } else {
-    yield put(navigate(is_running && localStorage.getItem('lock') ? ROUTES.WALLET.BASE : ROUTES.AUTH.LOGIN));
+    yield put(navigate(is_running && localStorage.getItem('locked') ? ROUTES.WALLET.BASE : ROUTES.AUTH.LOGIN));
   }
 }
 

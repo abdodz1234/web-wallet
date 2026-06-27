@@ -31,10 +31,46 @@ let rpcBackgroundPort: chrome.runtime.Port | null = null;
 let inpagePort: MessagePort | null = null;
 let isConnectedToWallet = false;
 let connectInFlight: Promise<boolean> | null = null;
+let legacyListenerRegistered = false;
 
+// Kept for the legacy window-message path only; new ensureConnected uses ephemeral ports.
 const extensionPort = extensionizer.runtime.connect({ name: Environment.CONTENT_REQ });
 
-function ensureConnected(appname?: string) {
+// Attempt one auth connection on a fresh ephemeral port.
+// Returns true/false on response, or null on timeout (so caller can retry).
+function tryConnect(reqData: ConnectRequest, timeoutMs: number): Promise<boolean | null> {
+  const authPort = extensionizer.runtime.connect({ name: Environment.CONTENT_REQ });
+  return new Promise<boolean | null>((resolve) => {
+    let onMsg: (msg: any) => void;
+    const timeoutId = setTimeout(() => {
+      authPort.onMessage.removeListener(onMsg);
+      try {
+        authPort.disconnect();
+      } catch {
+        /* already dead */
+      }
+      resolve(null);
+    }, timeoutMs);
+
+    onMsg = (msg: any) => {
+      if (msg && typeof msg.result === 'boolean') {
+        clearTimeout(timeoutId);
+        authPort.onMessage.removeListener(onMsg);
+        try {
+          authPort.disconnect();
+        } catch {
+          /* already dead */
+        }
+        resolve(!!msg.result);
+      }
+    };
+
+    authPort.onMessage.addListener(onMsg);
+    authPort.postMessage(reqData);
+  });
+}
+
+function ensureConnected(appname?: string): Promise<boolean> {
   if (isConnectedToWallet) return Promise.resolve(true);
   if (connectInFlight) return connectInFlight;
 
@@ -46,22 +82,23 @@ function ensureConnected(appname?: string) {
     is_reconnect: false,
   };
 
-  connectInFlight = new Promise<boolean>((resolve) => {
-    const onMsg = (msg: any) => {
-      if (msg && typeof msg.result === 'boolean') {
-        extensionPort.onMessage.removeListener(onMsg);
+  // Two attempts: first 8 s (cold start — wallet tab opens during this window),
+  // retry 15 s (wallet tab is now open, new port fires onConnect in page.html).
+  connectInFlight = (async () => {
+    for (let attempt = 0; attempt <= 1; attempt += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await tryConnect(reqData, attempt === 0 ? 8000 : 15000);
+      if (ok !== null) {
         connectInFlight = null;
-        isConnectedToWallet = !!msg.result;
-        if (msg.result) {
-          window.postMessage('apiInjected', window.origin);
-        }
-        resolve(!!msg.result);
+        isConnectedToWallet = ok;
+        if (ok) window.postMessage('apiInjected', window.origin);
+        return ok;
       }
-    };
-
-    extensionPort.onMessage.addListener(onMsg);
-    extensionPort.postMessage(reqData);
-  });
+      // null = timed out; loop continues to retry
+    }
+    connectInFlight = null;
+    return false;
+  })();
 
   return connectInFlight;
 }
@@ -197,14 +234,17 @@ window.addEventListener('message', (event) => {
       extensionPort.postMessage(reqData);
     } else {
       extensionPort.postMessage(reqData);
-      extensionPort.onMessage.addListener((msg) => {
-        if (msg.result) {
-          isConnectedToWallet = true;
-          window.postMessage('apiInjected', window.origin);
-        } else if (!msg.result) {
-          window.postMessage('rejected', window.origin);
-        }
-      });
+      if (!legacyListenerRegistered) {
+        legacyListenerRegistered = true;
+        extensionPort.onMessage.addListener((msg) => {
+          if (msg.result) {
+            isConnectedToWallet = true;
+            window.postMessage('apiInjected', window.origin);
+          } else if (!msg.result) {
+            window.postMessage('rejected', window.origin);
+          }
+        });
+      }
     }
   }
 });

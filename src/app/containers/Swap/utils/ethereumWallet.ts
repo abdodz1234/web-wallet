@@ -312,6 +312,32 @@ export function formatEthereumAddress(address: string): string {
 }
 
 /**
+ * Trigger MetaMask's account picker so the user can switch or add an account.
+ * Uses wallet_requestPermissions which forces the picker even when already connected.
+ */
+export async function requestAccountChange(): Promise<EthereumWallet | null> {
+  const provider = getMetaMaskProvider();
+  if (!provider) {
+    throw new Error('MetaMask is not installed or not available');
+  }
+  try {
+    await safeProviderRequest(provider, 'wallet_requestPermissions', [{ eth_accounts: {} }]);
+  } catch (error: any) {
+    // User closed the picker (code 4001) — treat as cancellation, not error
+    if (error?.code === 4001) return null;
+    throw error;
+  }
+  const accounts = await safeProviderRequest(provider, 'eth_accounts');
+  if (!accounts || accounts.length === 0) return null;
+  const chainId = await safeProviderRequest(provider, 'eth_chainId');
+  return {
+    address: accounts[0],
+    chainId: parseInt(chainId, 16),
+    isConnected: true,
+  };
+}
+
+/**
  * Listen to account changes
  */
 export function onAccountsChanged(callback: (accounts: string[]) => void): () => void {

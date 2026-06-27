@@ -1,5 +1,5 @@
 import {
-  postMessage, invokeContract, createInternalAppAPI, getInternalAppAPI,
+  postMessage, invokeContract, createInternalAppAPI, processInvokeData,
 } from '@app/core/api';
 import { RPCMethod } from '@app/core/types';
 import { BEAM_ADDRESS_LENGTH } from '../constants';
@@ -151,17 +151,16 @@ export async function sendTo(params: SendToParams): Promise<any> {
   // Use string-based calculation to avoid precision issues with large numbers
   const decimalsNum = typeof decimals === 'number' ? decimals : parseInt(String(decimals), 10);
 
-  // Calculate 10^decimals as a number (match bridge-app BigNumber.exponentiatedBy approach)
-  // Use a loop to avoid Math.pow transpilation issues
-  let expBy = 1;
-  for (let i = 0; i < decimalsNum; i += 1) {
-    expBy *= 10;
-  }
+  // Convert float to base units via string to avoid IEEE 754 precision loss.
+  const toBaseUnits = (value: number, dec: number): number => {
+    const fixed = value.toFixed(dec);
+    const [intPart, fracPart = ''] = fixed.split('.');
+    const padded = fracPart.padEnd(dec, '0').slice(0, dec);
+    return parseInt(`${intPart}${padded}`, 10);
+  };
 
-  // Convert to numbers like bridge-app does (using BigNumber.times().toNumber() approach)
-  // Multiply amount and fee by 10^decimals
-  const finalAmount = Math.floor(amount * expBy);
-  const relayerFee = Math.floor(fee * expBy);
+  const finalAmount = toBaseUnits(amount, decimalsNum);
+  const relayerFee = toBaseUnits(fee, decimalsNum);
 
   try {
     // Ensure app API is created before invoking contract
@@ -192,28 +191,8 @@ export async function sendTo(params: SendToParams): Promise<any> {
       appname: SWAP_APP_NAME,
     });
 
-    // Match bridge-app's onMakeTx: process the raw_data to create the transaction
-    // bridge-app calls: Utils.callApi('process_invoke_data', {data: full.result.raw_data})
     if (result && result.raw_data) {
-      // Get the app API from internalAppAPIs (it's already created by invokeContract)
-      const appApi = getInternalAppAPI(SWAP_APP_URL);
-      if (appApi) {
-        // Call process_invoke_data via app API (same as bridge-app's onMakeTx)
-        const processRequest = {
-          jsonrpc: '2.0',
-          id: `process-${Date.now()}`,
-          method: 'process_invoke_data',
-          params: {
-            data: result.raw_data,
-          },
-        };
-
-        // Call via app API (same pattern as bridge-app's Utils.callApi)
-        appApi.callWalletApi(JSON.stringify(processRequest));
-      } else {
-        // eslint-disable-next-line no-console
-        console.warn('App API not found for processing transaction data');
-      }
+      await processInvokeData(SWAP_APP_URL, result.raw_data);
     }
 
     return result;

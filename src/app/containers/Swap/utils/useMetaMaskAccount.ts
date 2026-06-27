@@ -20,6 +20,12 @@ export function useMetaMaskAccount(): UseMetaMaskAccountResult {
   const [wallet, setWallet] = useState<EthereumWallet | null>(null);
   const [address, setAddress] = useState('');
 
+  // connectMetaMask() calls resetMetaMaskProvider() which destroys the current
+  // provider and all its listeners. We bump this counter after each connect() call
+  // so that the accountsChanged / chainChanged listeners get re-registered on the
+  // newly created provider instance.
+  const [providerGeneration, setProviderGeneration] = useState(0);
+
   const clear = useCallback(() => {
     setWallet(null);
     setAddress('');
@@ -53,6 +59,11 @@ export function useMetaMaskAccount(): UseMetaMaskAccountResult {
     async (networkId: number) => {
       const account = await connectMetaMask(networkId);
       applyWallet(account ?? null);
+      // connectMetaMask() resets the underlying provider, so the accountsChanged /
+      // chainChanged listeners registered in the effect below are now on the dead
+      // provider. Incrementing providerGeneration causes the effect to re-run and
+      // re-register those listeners on the freshly created provider.
+      setProviderGeneration((g) => g + 1);
       return account ?? null;
     },
     [applyWallet],
@@ -77,7 +88,11 @@ export function useMetaMaskAccount(): UseMetaMaskAccountResult {
       unsubscribeAccounts();
       unsubscribeChain();
     };
-  }, [clear, refresh]);
+    // providerGeneration is intentionally included: when connectMetaMask() resets
+    // the provider, bumping providerGeneration re-runs this effect so listeners are
+    // re-registered on the new provider instance.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clear, refresh, providerGeneration]);
 
   return {
     wallet,

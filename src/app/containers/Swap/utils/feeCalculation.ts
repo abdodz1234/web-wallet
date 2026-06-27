@@ -80,6 +80,9 @@ export async function loadGasPricesApiCall(): Promise<GasPriceResponse | null> {
   try {
     const API_URL = 'https://explorer-api.beam.mw/bridges';
     const response = await fetch(`${API_URL}/gasprices`);
+    if (!response.ok) {
+      return null;
+    }
     return await response.json();
   } catch (error) {
     // eslint-disable-next-line no-console

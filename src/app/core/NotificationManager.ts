@@ -1,7 +1,11 @@
 import * as extensionizer from 'extensionizer';
 import { NotificationType } from '@core/types';
 import ExtensionPlatform from './Extension';
-import store from '../../index';
+
+// Lazily resolved at call time to avoid a circular dependency:
+// WasmWallet → NotificationManager → rootStore → store → saga → auth/saga → WasmWallet
+// eslint-disable-next-line @typescript-eslint/no-var-requires, global-require
+const getStore = (): any => require('@app/store/rootStore').default;
 
 const NOTIFICATION_HEIGHT = 600;
 const NOTIFICATION_WIDTH = 900;
@@ -25,7 +29,11 @@ export default class NotificationManager {
 
   private popupId = null;
 
-  private contentReqPort = null;
+  // notification.html → page.html channel (NOTIFICATION port, set by shared saga).
+  private reqPort: chrome.runtime.Port | null = null;
+
+  // page.html → content script auth responses; keyed by origin to avoid multi-tab misrouting.
+  private contentReqPorts = new Map<string, chrome.runtime.Port>();
 
   static getInstance() {
     if (this.instance != null) {
@@ -47,12 +55,29 @@ export default class NotificationManager {
     this.platform = new ExtensionPlatform();
   }
 
-  setReqPort(port) {
-    this.contentReqPort = port;
+  // Called by shared saga in notification.html context to wire up the NOTIFICATION port.
+  setReqPort(port: chrome.runtime.Port) {
+    this.reqPort = port;
   }
 
-  postMessage(message) {
-    this.contentReqPort.postMessage(message);
+  // Send an action message from notification.html → page.html via the NOTIFICATION port.
+  postMessage(message: any) {
+    this.reqPort?.postMessage(message);
+  }
+
+  // Called by api.ts in page.html context to register each dApp's CONTENT_REQ port.
+  setContentReqPort(port: chrome.runtime.Port, origin: string) {
+    this.contentReqPorts.set(origin, port);
+    port.onDisconnect.addListener(() => {
+      if (this.contentReqPorts.get(origin) === port) {
+        this.contentReqPorts.delete(origin);
+      }
+    });
+  }
+
+  // Send an auth response from page.html → content script for the given origin.
+  sendAuthResponse(message: any, origin: string) {
+    this.contentReqPorts.get(origin)?.postMessage(message);
   }
 
   openConnectNotification(msg, appurl) {
@@ -92,7 +117,7 @@ export default class NotificationManager {
         req,
         info,
         appname: this.appname,
-        assets: store.getState().wallet.assets,
+        assets: getStore().getState().wallet.assets,
       },
     };
     this.notificationIsOpen = true;
@@ -107,7 +132,7 @@ export default class NotificationManager {
         info,
         amounts,
         appname: this.appname,
-        assets: store.getState().wallet.assets,
+        assets: getStore().getState().wallet.assets,
       },
     };
     this.notificationIsOpen = true;
@@ -160,11 +185,18 @@ export default class NotificationManager {
 
   async openPopup() {
     await this.triggerUi();
-    await new Promise((resolve) => {
-      const interval = setInterval(() => {
+    await new Promise<void>((resolve) => {
+      let interval: ReturnType<typeof setInterval>;
+      const timeoutId = setTimeout(() => {
+        clearInterval(interval);
+        resolve();
+      }, 60_000);
+
+      interval = setInterval(() => {
         if (!this.notificationIsOpen) {
           clearInterval(interval);
-          resolve(true);
+          clearTimeout(timeoutId);
+          resolve();
         }
       }, 1000);
     });

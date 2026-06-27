@@ -11,6 +11,7 @@ import { convertLowAmount, fromGroths } from '@core/utils';
 import {
   formatEthereumAddress,
   isMetaMaskInstalled,
+  requestAccountChange,
   switchToNetwork,
   getEthersProvider,
 } from '../../utils/ethereumWallet';
@@ -22,10 +23,16 @@ import { useEvmBalances } from '../../utils/useEvmBalances';
 import {
   BEAM_ADDRESS_LENGTH, BEAM_BRIDGE_ASSETS, NETWORKS_BY_ID, getEvmAssets,
 } from '../../constants';
+import { NetworkOption } from './components/NetworkSelector';
 import { ethPipeAbi, ethErc20PipeAbi, erc20Abi } from '../../utils/evmContracts';
 import { SwapForm } from './components/SwapForm';
 
 const amountPattern = /^\d*\.?\d*$/;
+
+const NETWORK_OPTIONS: NetworkOption[] = Object.entries(NETWORKS_BY_ID).map(([id, info]) => ({
+  id,
+  label: info.name,
+}));
 
 const TRANSACTION_FEE = 0.011;
 const DEFAULT_BEAM_RELAYER_FEE = 0.01;
@@ -81,6 +88,7 @@ export const SwapContainer = () => {
     address: ethAddress,
     connect: connectMetaMaskWallet,
     refresh: refreshMetaMask,
+    clear: clearMetaMask,
   } = useMetaMaskAccount();
   const handleBeamAddressError = useCallback(() => {
     toast.error('Failed to load Beam wallet address from contract. Make sure pipe_app.wasm is available.');
@@ -138,6 +146,14 @@ export const SwapContainer = () => {
   );
   const beamRelayerFee = relayerFeeByNetwork ?? DEFAULT_BEAM_RELAYER_FEE;
 
+  const { relayerFeeByNetwork: evmRelayerFeeByNetwork } = useRelayerFee(
+    selectedNetwork,
+    relayerFeeNetworkId,
+    selectedEvmAsset?.rateId ?? 'ethereum',
+    selectedEvmAsset?.decimals ?? 18,
+  );
+  const evmRelayerFee = evmRelayerFeeByNetwork ?? DEFAULT_EVM_RELAYER_FEE;
+
   useEffect(() => {
     if (ethWallet?.chainId && String(ethWallet.chainId) !== selectedNetwork) {
       setSelectedNetwork(String(ethWallet.chainId));
@@ -183,6 +199,48 @@ export const SwapContainer = () => {
     } finally {
       setIsLoadingEth(false);
     }
+  };
+
+  const handleNetworkSelect = async (networkId: string) => {
+    setSelectedNetwork(networkId);
+    if (ethWallet) {
+      setIsLoadingEth(true);
+      try {
+        await switchToNetwork(Number(networkId));
+        await refreshMetaMask();
+      } catch (error: any) {
+        // eslint-disable-next-line no-console
+        console.error('Failed to switch network:', error);
+        toast.error(error?.message || `Failed to switch to ${NETWORKS_BY_ID[Number(networkId)]?.name ?? 'network'}`);
+      } finally {
+        setIsLoadingEth(false);
+      }
+    }
+  };
+
+  const handleChangeAccount = async () => {
+    setIsLoadingEth(true);
+    try {
+      if (!isMetaMaskInstalled()) {
+        toast.error('MetaMask is not installed. Please install MetaMask to continue.');
+        return;
+      }
+      const result = await requestAccountChange();
+      if (result) {
+        await refreshMetaMask();
+        toast.success('Account updated');
+      }
+    } catch (error: any) {
+      // eslint-disable-next-line no-console
+      console.error('Failed to change MetaMask account:', error);
+      toast.error(error?.message || 'Failed to change account');
+    } finally {
+      setIsLoadingEth(false);
+    }
+  };
+
+  const handleDisconnect = () => {
+    clearMetaMask();
   };
 
   useEffect(() => {
@@ -243,11 +301,8 @@ export const SwapContainer = () => {
     if (!selectedBeamAsset) {
       return 'Select an asset';
     }
-    if (amount < beamRelayerFee) {
-      return 'Amount must be >= relayer fee';
-    }
-    if (beamAssetBalance && amount + beamRelayerFee > beamAssetBalance) {
-      return `Insufficient ${selectedBeamAsset.name} balance (including relayer fee)`;
+    if (amount + beamRelayerFee + TRANSACTION_FEE > beamAssetBalance) {
+      return `Insufficient ${selectedBeamAsset.name} balance`;
     }
     return undefined;
   }, [beamToEvmAmount, beamRelayerFee, beamAssetBalance, selectedBeamAsset]);
@@ -274,20 +329,40 @@ export const SwapContainer = () => {
     if (!amount || amount.lte(0)) {
       return 'Enter a valid amount';
     }
-    const fee = parseUnitsSafe(String(DEFAULT_EVM_RELAYER_FEE), selectedEvmAsset.decimals);
+    const fee = parseUnitsSafe(String(evmRelayerFee), selectedEvmAsset.decimals);
     if (!fee) {
       return 'Failed to calculate relayer fee';
     }
-    if (amount.lt(fee)) {
-      return 'Amount must be >= relayer fee';
-    }
     if (selectedEvmBalance && amount.add(fee).gt(selectedEvmBalance.raw)) {
-      return `Insufficient ${selectedEvmAsset.name} balance (including relayer fee)`;
+      return `Insufficient ${selectedEvmAsset.name} balance`;
     }
     return undefined;
-  }, [evmToBeamAmount, selectedEvmAsset, selectedEvmBalance]);
+  }, [evmToBeamAmount, selectedEvmAsset, selectedEvmBalance, evmRelayerFee]);
 
   const isNetworkMismatch = ethWallet?.chainId && ethWallet.chainId !== Number(selectedNetwork);
+
+  const beamTotalDeducted = useMemo(() => {
+    const amount = Number(beamToEvmAmount);
+    if (!Number.isFinite(amount) || amount <= 0) return null;
+    return amount + beamRelayerFee + TRANSACTION_FEE;
+  }, [beamToEvmAmount, beamRelayerFee]);
+
+  const evmTotalDeducted = useMemo(() => {
+    if (!evmToBeamAmount || !selectedEvmAsset) return null;
+    const amount = parseUnitsSafe(evmToBeamAmount, selectedEvmAsset.decimals);
+    const fee = parseUnitsSafe(String(evmRelayerFee), selectedEvmAsset.decimals);
+    if (!amount || !fee || amount.lte(0)) return null;
+    return ethers.utils.formatUnits(amount.add(fee), selectedEvmAsset.decimals);
+  }, [evmToBeamAmount, selectedEvmAsset, evmRelayerFee]);
+
+  const activeTotalDeducted = useMemo(() => {
+    if (isBeamToEvm) {
+      if (beamTotalDeducted == null) return null;
+      return `${formatBeamAmount(beamTotalDeducted)} ${selectedBeamAsset?.name ?? 'BEAM'}`;
+    }
+    if (evmTotalDeducted == null) return null;
+    return `${formatTokenAmount(evmTotalDeducted, selectedEvmAsset?.decimals ?? 8)} ${selectedEvmAsset?.name ?? ''}`;
+  }, [isBeamToEvm, beamTotalDeducted, evmTotalDeducted, selectedBeamAsset, selectedEvmAsset]);
 
   const canSendBeam = Boolean(beamToEvmAmount && ethAddress && !beamRecipientError && !beamAmountError && beamAssetCid) && !isLoadingFee;
 
@@ -326,11 +401,13 @@ export const SwapContainer = () => {
     }
     return 'Send';
   })();
-  const directionLabel = isBeamToEvm ? `Beam → ${networkName}` : `${networkName} → Beam`;
-  const directionDescription = isBeamToEvm ? `Send from Beam to ${networkName}` : `Send from ${networkName} to Beam`;
   const activeAssetOptions = isBeamToEvm
     ? BEAM_BRIDGE_ASSETS.map((asset) => ({ value: asset.assetId, label: asset.name }))
     : evmAssets.map((asset) => ({ value: asset.name, label: asset.name }));
+
+  const beamMaxDisabled = beamAssetBalance <= beamRelayerFee + TRANSACTION_FEE;
+  const evmMaxDisabled = !selectedEvmBalance;
+
   const notices = useMemo(() => {
     const items: Array<{ message: string; tone?: 'error' | 'muted' }> = [];
     if (isBeamToEvm && beamRecipientError) {
@@ -364,13 +441,13 @@ export const SwapContainer = () => {
 
   const handleBeamMax = () => {
     if (!selectedBeamAsset) return;
-    const maxValue = Math.max(beamAssetBalance - beamRelayerFee, 0);
+    const maxValue = Math.max(beamAssetBalance - beamRelayerFee - TRANSACTION_FEE, 0);
     setBeamToEvmAmount(formatBeamAmount(maxValue));
   };
 
   const handleEvmMax = () => {
     if (!selectedEvmAsset || !selectedEvmBalance) return;
-    const fee = parseUnitsSafe(String(DEFAULT_EVM_RELAYER_FEE), selectedEvmAsset.decimals);
+    const fee = parseUnitsSafe(String(evmRelayerFee), selectedEvmAsset.decimals);
     if (!fee) return;
     const maxValue = selectedEvmBalance.raw.gt(fee) ? selectedEvmBalance.raw.sub(fee) : ethers.BigNumber.from(0);
     setEvmToBeamAmount(ethers.utils.formatUnits(maxValue, selectedEvmAsset.decimals));
@@ -431,7 +508,7 @@ export const SwapContainer = () => {
     }
 
     const amount = parseUnitsSafe(evmToBeamAmount, selectedEvmAsset.decimals);
-    const fee = parseUnitsSafe(String(DEFAULT_EVM_RELAYER_FEE), selectedEvmAsset.decimals);
+    const fee = parseUnitsSafe(String(evmRelayerFee), selectedEvmAsset.decimals);
     if (!amount || !fee) {
       toast.error('Invalid amount');
       return;
@@ -498,12 +575,33 @@ export const SwapContainer = () => {
   };
 
   return (
-    <Window title="Swap" primary>
+    <Window title="Swap">
       <SwapForm
-        directionLabel={directionLabel}
-        directionDescription={directionDescription}
+        fromChain={isBeamToEvm ? 'Beam' : networkName}
+        toChain={isBeamToEvm ? networkName : 'Beam'}
+        fromColor={isBeamToEvm ? 'purple' : 'blue'}
+        toColor={isBeamToEvm ? 'blue' : 'purple'}
         onToggleDirection={handleDirectionToggle}
+        networkSelector={{
+          networks: NETWORK_OPTIONS,
+          selected: selectedNetwork,
+          connectedChainId: ethWallet?.chainId ?? null,
+          onSelect: handleNetworkSelect,
+          disabled: isLoadingEth,
+        }}
+        walletInfo={
+          ethWallet
+            ? {
+              address: ethAddress,
+              networkMismatch: Boolean(isNetworkMismatch),
+              onChangeAccount: handleChangeAccount,
+              onDisconnect: handleDisconnect,
+              isLoading: isLoadingEth,
+            }
+            : undefined
+        }
         notices={notices}
+        evmSubmitError={!isBeamToEvm ? evmSubmitError : null}
         amount={{
           value: activeAmount,
           error: activeAmountError,
@@ -514,29 +612,27 @@ export const SwapContainer = () => {
           onSelect: handleAssetSelect,
           availableLabel: activeBalanceDisplay,
           onMax: handleActiveMax,
-          isMaxDisabled: isBeamToEvm ? !beamAssetBalance : !selectedEvmBalance,
+          isMaxDisabled: isBeamToEvm ? beamMaxDisabled : evmMaxDisabled,
           isLoadingBalances: !isBeamToEvm && isLoadingEvmBalances,
         }}
         output={{
           value: activeAmount,
-          palette: isBeamToEvm ? 'blue' : 'purple',
           tokenLabel: activeToTokenLabel,
         }}
         fees={{
           isBeamToEvm,
-          beamRelayerFee,
-          beamAssetLabel: selectedBeamAsset?.name ?? 'BEAM',
+          relayerFee: isBeamToEvm ? beamRelayerFee : evmRelayerFee,
+          relayerFeeLabel: isBeamToEvm ? selectedBeamAsset?.name ?? 'BEAM' : selectedEvmAsset?.name ?? 'ASSET',
+          relayerFeeDecimals: isBeamToEvm ? 8 : 4,
+          transactionFee: isBeamToEvm ? TRANSACTION_FEE : undefined,
           feeFallback: Boolean(feeError),
-          transactionFee: TRANSACTION_FEE,
-          evmRelayerFee: DEFAULT_EVM_RELAYER_FEE,
-          evmAssetLabel: selectedEvmAsset?.name ?? 'ASSET',
-          networkStatus: ethWallet ? 'Ready' : 'Connect MetaMask',
+          totalDeducted: activeTotalDeducted,
         }}
         actions={{
           showConnect: !ethWallet,
           connectLabel: isLoadingEth ? 'Connecting...' : 'Connect MetaMask',
           onConnect: handleConnectMetaMask,
-          showSwitch: isNetworkMismatch && !isBeamToEvm,
+          showSwitch: Boolean(isNetworkMismatch) && !isBeamToEvm,
           switchLabel: isLoadingEth ? 'Switching...' : `Switch to ${networkName}`,
           onSwitch: handleSwitchNetwork,
           isLoadingEth,
@@ -545,7 +641,6 @@ export const SwapContainer = () => {
           isSubmitting: activeIsSubmitting,
           submitPalette: isBeamToEvm ? 'purple' : 'blue',
         }}
-        evmSubmitError={!isBeamToEvm ? evmSubmitError : null}
         onSubmit={handleFormSubmit}
       />
     </Window>

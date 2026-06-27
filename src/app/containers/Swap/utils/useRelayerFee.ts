@@ -2,7 +2,9 @@
  * Hook to fetch and calculate relayer fees
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import {
+  useState, useEffect, useCallback, useRef,
+} from 'react';
 import { calculateRelayerFees, loadRatesCached } from './feeCalculation';
 
 const ETH_ID = 'ethereum';
@@ -30,12 +32,15 @@ export function useRelayerFee(
   const [relayerFees, setRelayerFees] = useState<Record<string, number>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const initializedRef = useRef(false);
 
   const fetchFees = useCallback(async () => {
-    try {
+    const isFirstFetch = !initializedRef.current;
+    if (isFirstFetch) {
       setIsLoading(true);
-      setError(null);
-
+    }
+    setError(null);
+    try {
       const rates = await loadRatesCached();
       if (!rates) {
         throw new Error('Failed to load exchange rates');
@@ -43,13 +48,16 @@ export function useRelayerFee(
 
       const fees = await calculateRelayerFees(rates, currencyRateId, ETH_ID, currencyDecimals);
       setRelayerFees(fees);
+      initializedRef.current = true;
     } catch (err) {
       const nextError = err instanceof Error ? err : new Error('Failed to calculate relayer fees');
       setError(nextError);
       // eslint-disable-next-line no-console
       console.error('Error fetching relayer fees:', nextError);
     } finally {
-      setIsLoading(false);
+      if (isFirstFetch) {
+        setIsLoading(false);
+      }
     }
   }, [currencyDecimals, currencyRateId]);
 

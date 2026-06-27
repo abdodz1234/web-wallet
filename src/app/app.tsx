@@ -49,10 +49,6 @@ const routes = [
     element: <TransactionContainer />,
   },
   {
-    path: `${ROUTES.NOTIFICATIONS.BASE}/*`,
-    element: <NotificationContainer />,
-  },
-  {
     path: `${ROUTES.SETTINGS.BASE}/*`,
     element: <SettingsContainer />,
   },

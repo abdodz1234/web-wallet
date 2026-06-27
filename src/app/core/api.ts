@@ -216,6 +216,8 @@ function handleConnect(remote) {
 
         remote.onDisconnect.addListener(() => {
           removeExternalRpcPort(origin, remote);
+          // Clean up the WASM app API when the dApp's RPC channel closes (tab close / navigation).
+          wallet.disconnectAppApi(origin);
         });
 
         remote.onMessage.addListener((msg: BeamRpcRequestMessage) => {
@@ -227,7 +229,7 @@ function handleConnect(remote) {
 
           // keep UI labeling consistent with previous behavior
           if (appname) {
-            notificationManager.appname = appname;
+            notificationManager.appname = String(appname).slice(0, 64);
           }
 
           try {
@@ -257,7 +259,8 @@ function handleConnect(remote) {
       break;
 
     case Environment.CONTENT_REQ: {
-      notificationManager.setReqPort(remote);
+      const reqOrigin = getSenderOrigin(remote.sender);
+      if (reqOrigin) notificationManager.setContentReqPort(remote, reqOrigin);
       contentPort = remote;
       contentPort.onMessage.addListener((msg) => {
         const origin = getSenderOrigin(remote.sender);
@@ -280,11 +283,9 @@ function handleConnect(remote) {
         }
       });
 
-      contentPort.onDisconnect.addListener((e) => {
-        const origin = getSenderOrigin(e.sender);
-        if (origin) {
-          wallet.disconnectAppApi(origin);
-        }
+      contentPort.onDisconnect.addListener(() => {
+        // CONTENT_REQ ports are ephemeral (disconnected after auth succeeds) — do NOT
+        // clean up the app API here. App API lifetime tracks the CONTENT (RPC) port.
       });
       break;
     }
@@ -308,18 +309,19 @@ export function initRemoteConnection() {
 }
 
 export function postMessage<T = any, P = unknown>(method: RPCMethod, params?: P): Promise<T> {
+  const target = wallet.send(method, params);
   return new Promise((resolve, reject) => {
-    const target = wallet.send(method, params);
-    const handler = (data: RemoteResponse) => {
+    wallet.registerResponseHandler(target, (data: RemoteResponse) => {
       if (data.id === target) {
+        wallet.removeResponseHandler(target);
         if (data.error) {
-          return reject(data.error);
+          reject(data.error);
+        } else {
+          resolve(data.result);
         }
-        return resolve(data.result);
       }
-      return data;
-    };
-    wallet.setRemoteEventHandler(handler);
+      // Non-matching events are ignored; handler stays registered until its own response arrives.
+    });
   });
 }
 
@@ -508,6 +510,42 @@ export async function createInternalAppAPI(
  */
 export function getInternalAppAPI(appurl: string): any {
   return internalAppAPIs.get(appurl);
+}
+
+/**
+ * Process raw invoke data returned by invoke_contract.
+ * Registers the call in pendingContractCalls so callers can await the result.
+ * Note: if the wallet requires send approval the promise resolves only after
+ * the user acts on the notification — use a long timeout accordingly.
+ */
+export async function processInvokeData(appurl: string, data: any): Promise<any> {
+  const appApi = internalAppAPIs.get(appurl);
+  if (!appApi) {
+    throw new Error(`App API not found for ${appurl}`);
+  }
+
+  const callId = `process-${internalCallId}`;
+  internalCallId += 1;
+
+  const request = {
+    jsonrpc: '2.0',
+    id: callId,
+    method: 'process_invoke_data',
+    params: { data },
+  };
+
+  return new Promise<any>((resolve, reject) => {
+    pendingContractCalls.set(callId, { resolve, reject });
+    appApi.callWalletApi(JSON.stringify(request));
+
+    // 5 min — user may need to approve in the popup
+    setTimeout(() => {
+      if (pendingContractCalls.has(callId)) {
+        pendingContractCalls.delete(callId);
+        reject(new Error('process_invoke_data timeout'));
+      }
+    }, 300_000);
+  });
 }
 
 /**

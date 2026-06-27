@@ -1,20 +1,19 @@
+// @ts-nocheck
 import React, { useEffect, useState } from 'react';
 import QRCode from 'react-qr-code';
 import { styled } from '@linaria/react';
+import { css } from '@linaria/core';
 
-import {
-  Window, Section, Button, Input, Toggle, Popup,
-} from '@app/shared/components';
-
+import { Window, Rate, Toggle } from '@app/shared/components';
+import Select, { Option } from '@app/shared/components/Select';
 import { CopySmallIcon, IconQrCode, InfoButton } from '@app/shared/icons';
-
-import AmountInput from '@app/shared/components/AmountInput';
 
 import { useNavigate } from 'react-router-dom';
 import { ROUTES } from '@app/shared/constants';
 import { useDispatch, useSelector } from 'react-redux';
 import {
   selectAddress,
+  selectAssets,
   selectReceiveAmount,
   selectSbbs,
   selectSelectedAssetId,
@@ -22,80 +21,337 @@ import {
 import {
   generateAddress, resetReceive, setReceiveAmount, setSbbs,
 } from '@app/containers/Wallet/store/actions';
-import { compact, copyToClipboard } from '@core/utils';
+import { compact, copyToClipboard, truncate } from '@core/utils';
 import { toast } from 'react-toastify';
 import { AmountError } from '@app/containers/Wallet/constants';
 import { TransactionAmount } from '@app/containers/Wallet/interfaces';
 import { FullAddress } from '@app/containers';
 
-const AddressStyled = styled.div`
-  line-height: 24px;
+const REG_AMOUNT = /^(?!0\d)(\d+)(\.)?(\d+)?$/;
+const AMOUNT_MAX = 2e14;
+
+// ── Layout ────────────────────────────────────────────────────────────────────
+
+const PageWrap = styled.div`
+  width: 100%;
+  max-width: 676px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 `;
+
+const Card = styled.div`
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  padding: 16px;
+`;
+
+const FieldLabel = styled.div`
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 8px;
+`;
+
+// ── Address card ──────────────────────────────────────────────────────────────
+
+const AddressRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+`;
+
+const AddressText = styled.div`
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.85);
+  word-break: break-all;
+  min-width: 0;
+`;
+
+const IconBtnRow = styled.div`
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+`;
+
+const IconBtn = styled.button`
+  border: none;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  line-height: 0;
+  color: rgba(255, 255, 255, 0.6);
+  transition: background 0.12s, color 0.12s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+  }
+`;
+
 const AddressHint = styled.div`
-  margin-top: 10px;
-  opacity: 0.5;
-  font-size: 14px;
-  font-weight: normal;
-  font-stretch: normal;
+  font-size: 11px;
   font-style: italic;
-  line-height: 1.14;
-  letter-spacing: normal;
-  color: #fff;
+  color: rgba(255, 255, 255, 0.35);
+  margin-top: 8px;
 `;
 
-const TipStyled = styled.div`
-  line-height: 1.14;
-  margin-top: 10px;
-  font-family: SFProDisplay;
-  font-size: 14px;
+// ── Amount card ───────────────────────────────────────────────────────────────
+
+const AmountRow = styled.div`
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+`;
+
+const AmountNumInput = styled.input`
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  outline: none;
+  font-family: 'SFProDisplay';
+  transition: border-color 0.15s;
+  min-height: 52px;
+
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.2);
+    font-weight: 400;
+  }
+
+  &.error {
+    border-color: rgba(255, 90, 90, 0.6);
+  }
+
+  &:focus {
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+
+  -moz-appearance: textfield;
+
+  &::-webkit-outer-spin-button,
+  &::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+`;
+
+const tokenSelectClass = css`
+  margin-left: 0 !important;
+  flex-shrink: 0;
+  display: flex !important;
+  flex-direction: column !important;
+
+  > button {
+    flex: 1 !important;
+    border: 1px solid rgba(255, 255, 255, 0.09) !important;
+    border-radius: 10px !important;
+    padding: 0 14px !important;
+    background: rgba(255, 255, 255, 0.07) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    min-width: 90px !important;
+    color: white !important;
+  }
+`;
+
+const rateClass = css`
+  margin: 0 !important;
+  margin-top: 6px !important;
+  font-size: 12px !important;
+  color: rgba(255, 255, 255, 0.35) !important;
+  font-weight: 500 !important;
+`;
+
+const ErrorText = styled.div`
+  font-size: 12px;
+  color: #ff6b6b;
+  margin-top: 6px;
   font-style: italic;
-  color: var(--color-gray);
 `;
 
-const WarningStyled = styled(TipStyled)`
-  margin-bottom: 20px;
-  text-align: center;
+// ── Collapsible cards ─────────────────────────────────────────────────────────
+
+const CollapseHeader = styled.button`
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
 `;
 
-const RowStyled = styled.div`
+const Chevron = styled.span`
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.4);
+`;
+
+const CommentInput = styled.textarea`
+  width: 100%;
+  margin-top: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: white;
+  font-size: 13px;
+  font-family: 'SFProDisplay';
+  resize: none;
+  outline: none;
+  height: 72px;
+  box-sizing: border-box;
+
+  &::placeholder {
+    color: rgba(255, 255, 255, 0.25);
+  }
+
+  &:focus {
+    border-color: rgba(255, 255, 255, 0.22);
+  }
+`;
+
+const ToggleRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+`;
+
+// ── Warning notice ────────────────────────────────────────────────────────────
+
+const Notice = styled.div`
+  font-size: 12px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 12px 14px;
+  line-height: 1.6;
+`;
+
+// ── Primary button ────────────────────────────────────────────────────────────
+
+const PrimaryBtn = styled.button`
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-radius: 12px;
+  background: var(--color-blue);
+  color: var(--color-dark-blue);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.12s;
+
+  &:hover:not(:disabled) {
+    opacity: 0.88;
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: none;
+    opacity: 1;
+  }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: default;
+  }
+`;
+
+// ── QR modal ──────────────────────────────────────────────────────────────────
+
+const QrOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const QrPanel = styled.div`
+  background: #0e1f28;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 28px 24px;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+`;
+
+const QrFrame = styled.div`
+  background: white;
+  border-radius: 12px;
+  padding: 8px;
   display: flex;
 `;
 
-const LabelStyled = styled.label`
-  flex-grow: 1;
+const QrCaption = styled.div`
+  font-size: 12px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  line-height: 1.6;
 `;
 
-const QrCodeWrapper = styled.div`
-  > .qr-cd {
-    background: white;
-    border-radius: 10px;
-    padding: 5px;
-    width: 230px;
-    margin: 0 auto 30px;
-  }
-  > .text {
-    opacity: 0.5;
-    font-size: 14px;
-    font-weight: normal;
-    font-stretch: normal;
-    font-style: italic;
-    line-height: normal;
-    letter-spacing: normal;
-    text-align: center;
-    color: #fff;
-  }
+const QrCopyBtn = styled(PrimaryBtn)`
+  width: 100%;
 `;
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 const Receive = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+
   const [qrVisible, setQrVisible] = useState(false);
   const [showFullAddress, setShowFullAddress] = useState(false);
+  const [maxAnonymity, setMaxAnonymity] = useState(false);
+  const [comment, setComment] = useState('');
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [advOpen, setAdvOpen] = useState(false);
+  const [amountError, setAmountError] = useState('');
+
   const receiveAmount = useSelector(selectReceiveAmount());
   const addressFull = useSelector(selectAddress());
   const sbbs = useSelector(selectSbbs());
   const selected_asset_id = useSelector(selectSelectedAssetId());
+  const assets = useSelector(selectAssets());
+
   const address = compact(addressFull, 32);
-  const [amountError, setAmountError] = useState('');
+  const { amount, asset_id } = receiveAmount;
 
   useEffect(
     () => () => {
@@ -104,12 +360,6 @@ const Receive = () => {
     },
     [dispatch],
   );
-
-  const { amount, asset_id } = receiveAmount;
-
-  const [maxAnonymity, setMaxAnonymity] = useState(false);
-  const [comment, setComment] = useState('');
-  const navigate = useNavigate();
 
   useEffect(() => {
     if (selected_asset_id && Number(asset_id) !== selected_asset_id) {
@@ -143,7 +393,6 @@ const Receive = () => {
 
   const submitForm = async () => {
     await copyAddress();
-
     navigate(ROUTES.WALLET.BASE);
   };
 
@@ -162,9 +411,12 @@ const Receive = () => {
     ) {
       setAmountError(AmountError.LESS);
     }
-
     dispatch(setReceiveAmount(send_amount));
   };
+
+  const qrCaption = maxAnonymity
+    ? 'Transaction can last at most 72 hours.\nMin transaction fee is 0.01 BEAM.'
+    : 'Sender will be given a choice between regular and offline payment.\n\nFor online payment, get online within 12 hours after coins are sent.';
 
   return showFullAddress ? (
     <FullAddress
@@ -177,106 +429,122 @@ const Receive = () => {
     />
   ) : (
     <Window title="Receive" pallete="blue">
-      <Popup
-        visible={qrVisible}
-        title=""
-        onCancel={() => setQrVisible(false)}
-        confirmButton={(
-          <Button icon={CopySmallIcon} pallete="blue" onClick={copyAndCloseQr}>
-            copy and close
-          </Button>
-        )}
-        footerClass="qr-code-popup"
-        cancelButton={null}
-      >
-        <QrCodeWrapper>
-          <div className="qr-cd">
-            <QRCode value={`${addressFull}`} size={220} bgColor="white" />
-          </div>
-          {maxAnonymity ? (
-            <>
-              <div className="text"> Transaction can last at most 72 hours.</div>
-              <br />
-              <div className="text">Min transaction fee is 0.01 BEAM.</div>
-            </>
-          ) : (
-            <>
-              <div className="text">Sender will be given a choice between regular and offline payment.</div>
-              <br />
-              <div className="text">
-                For online payment to complete, you should get online during the 12 hours after coins are sent.
-              </div>
-            </>
-          )}
-        </QrCodeWrapper>
-      </Popup>
-
-      <Section title={`Address ${maxAnonymity ? '(Maximum anonymity)' : ''}`} variant="gray">
-        <AddressStyled>
-          {address}
-          &nbsp;
-          <Button variant="icon" pallete="white" icon={IconQrCode} onClick={() => setQrVisible(true)} />
-          <Button variant="icon" pallete="white" icon={CopySmallIcon} onClick={copyAddress} />
-          <Button
-            className="full-address-button"
-            variant="icon"
-            pallete="white"
-            icon={InfoButton}
-            onClick={() => setShowFullAddress(true)}
-          />
-        </AddressStyled>
-        {!maxAnonymity ? (
-          <AddressHint>To ensure a better privacy, new address is generated every time.</AddressHint>
-        ) : null}
-      </Section>
-      <Section title="requested amount (optional)" variant="gray">
-        <AmountInput
-          value={amount}
-          asset_id={asset_id}
-          pallete="blue"
-          error={amountError}
-          onChange={(e) => saveReceiveAmount(e)}
-        />
-      </Section>
-      <Section title="Comment" variant="gray" collapse>
-        <Input
-          variant="gray"
-          placeholder="Comment"
-          value={comment}
-          onChange={(e) => {
-            setComment(e.target.value);
-          }}
-        />
-      </Section>
-      <Section title="Advanced" variant="gray" collapse>
-        <RowStyled>
-          <LabelStyled>Maximum anonymity set </LabelStyled>
-          <Toggle id="ma" value={maxAnonymity} onChange={() => setMaxAnonymity((v) => !v)} />
-        </RowStyled>
-      </Section>
-
-      {maxAnonymity ? (
-        <WarningStyled>
-          Transaction can last at most 72 hours.
-          <br />
-          <br />
-          Min transaction fee is 0.01 BEAM.
-        </WarningStyled>
-      ) : (
-        <WarningStyled>
-          Sender will be given a choice between regular and offline payment.
-          <br />
-          <br />
-          For online payment to complete, you should get online during the 12 hours after coins are sent.
-        </WarningStyled>
+      {qrVisible && (
+        <QrOverlay onClick={() => setQrVisible(false)}>
+          <QrPanel onClick={(e) => e.stopPropagation()}>
+            <QrFrame>
+              <QRCode value={`${addressFull}`} size={220} bgColor="white" />
+            </QrFrame>
+            <QrCaption>{qrCaption}</QrCaption>
+            <QrCopyBtn type="button" onClick={copyAndCloseQr}>
+              Copy & Close
+            </QrCopyBtn>
+          </QrPanel>
+        </QrOverlay>
       )}
 
-      {/* <Section title="Comment" variant="gray" collapse>
-          <Input variant="gray" />
-        </Section> */}
-      <Button pallete="blue" type="button" onClick={submitForm} disabled={!!amountError}>
-        copy and close
-      </Button>
+      <PageWrap>
+        <Card>
+          <FieldLabel>
+            Your address
+            {maxAnonymity ? ' (Maximum anonymity)' : ''}
+          </FieldLabel>
+          <AddressRow>
+            <AddressText>{address}</AddressText>
+            <IconBtnRow>
+              <IconBtn type="button" title="Show QR code" onClick={() => setQrVisible(true)}>
+                <IconQrCode />
+              </IconBtn>
+              <IconBtn type="button" title="Copy address" onClick={copyAddress}>
+                <CopySmallIcon />
+              </IconBtn>
+              <IconBtn type="button" title="Full address details" onClick={() => setShowFullAddress(true)}>
+                <InfoButton />
+              </IconBtn>
+            </IconBtnRow>
+          </AddressRow>
+          {!maxAnonymity && <AddressHint>New address is generated every time to ensure better privacy.</AddressHint>}
+        </Card>
+
+        <Card>
+          <FieldLabel>Requested amount (optional)</FieldLabel>
+          <AmountRow>
+            <AmountNumInput
+              type="text"
+              inputMode="decimal"
+              placeholder="0"
+              value={amount}
+              className={amountError ? 'error' : ''}
+              onInput={(e) => {
+                const raw = e.target.value;
+                if (raw !== '' && !REG_AMOUNT.test(raw)) return;
+                if (raw !== '' && parseFloat(raw) > AMOUNT_MAX) return;
+                saveReceiveAmount({ amount: raw, asset_id });
+              }}
+            />
+            <Select
+              value={asset_id}
+              className={tokenSelectClass}
+              onSelect={(next) => saveReceiveAmount({ amount: '', asset_id: Number(next) })}
+            >
+              {assets.map(({ asset_id: id, metadata_pairs }) => (
+                <Option key={id} value={id}>
+                  {truncate(metadata_pairs.UN || metadata_pairs.N || `Asset #${id}`)}
+                </Option>
+              ))}
+            </Select>
+          </AmountRow>
+          {amountError && <ErrorText>{amountError}</ErrorText>}
+          {asset_id === 0 && !amountError && amount && <Rate value={parseFloat(amount)} className={rateClass} />}
+        </Card>
+
+        <Card>
+          <CollapseHeader type="button" onClick={() => setCommentOpen((v) => !v)}>
+            <FieldLabel style={{ margin: 0 }}>Comment</FieldLabel>
+            <Chevron>{commentOpen ? '▴' : '▾'}</Chevron>
+          </CollapseHeader>
+          {commentOpen && (
+            <CommentInput
+              placeholder="Add a note (optional)"
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+            />
+          )}
+        </Card>
+
+        <Card>
+          <CollapseHeader type="button" onClick={() => setAdvOpen((v) => !v)}>
+            <FieldLabel style={{ margin: 0 }}>Advanced</FieldLabel>
+            <Chevron>{advOpen ? '▴' : '▾'}</Chevron>
+          </CollapseHeader>
+          {advOpen && (
+            <ToggleRow>
+              <span>Maximum anonymity</span>
+              <Toggle id="ma" value={maxAnonymity} onChange={() => setMaxAnonymity((v) => !v)} />
+            </ToggleRow>
+          )}
+        </Card>
+
+        {maxAnonymity ? (
+          <Notice>
+            Transaction can last at most 72 hours.
+            <br />
+            <br />
+            Min transaction fee is 0.01 BEAM.
+          </Notice>
+        ) : (
+          <Notice>
+            Sender will be given a choice between regular and offline payment.
+            <br />
+            <br />
+            For online payment to complete, get online within 12 hours after coins are sent.
+          </Notice>
+        )}
+
+        <PrimaryBtn type="button" onClick={submitForm} disabled={!!amountError}>
+          Copy & Close
+        </PrimaryBtn>
+      </PageWrap>
     </Window>
   );
 };

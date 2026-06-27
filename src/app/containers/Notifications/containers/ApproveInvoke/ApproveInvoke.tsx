@@ -135,8 +135,25 @@ const ApproveInvoke = () => {
   const notification = NotificationController.getNotification();
   const notificationManager = NotificationManager.getInstance();
   const { assets } = notification.params;
-  const amounts = JSON.parse(notification.params.amounts);
-  const info = JSON.parse(notification.params.info);
+
+  let amounts: any[] = [];
+  let info: any = {};
+  try {
+    amounts = JSON.parse(notification.params.amounts);
+    info = JSON.parse(notification.params.info);
+  } catch {
+    return (
+      <ContainerStyled>
+        <TitleStyled>Error</TitleStyled>
+        <TextStyled>Invalid notification data. Please close this window and try again.</TextStyled>
+        <ControlsStyled>
+          <Button variant="ghost" icon={CancelIcon} onClick={() => window.close()}>
+            close
+          </Button>
+        </ControlsStyled>
+      </ContainerStyled>
+    );
+  }
 
   const text = getNotificationText(info, amounts, notification.params.appname);
   const title = getNotificationTitle(info, amounts);

@@ -221,6 +221,7 @@ export const Window: React.FC<WindowProps> = ({
   const wrapperRef = useRef(null);
   const [isOpened, setIsOpened] = useState(false);
   const [menuVisible, setVisible] = useState(false);
+  const [menuClosing, setMenuClosing] = useState(false);
   const { isOutside } = useOutsideClick(wrapperRef);
   const navigate = useNavigate();
 
@@ -236,8 +237,21 @@ export const Window: React.FC<WindowProps> = ({
 
   const handleBackClick = !onPrevious ? handlePrevious : onPrevious;
 
+  // Lock body scroll while menu is open so underlying content can't scroll.
+  useEffect(() => {
+    if (menuVisible) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [menuVisible]);
+
   const handleMenuClick = () => {
     setVisible(true);
+    setMenuClosing(false);
     setIsOpened(false);
   };
 
@@ -246,7 +260,13 @@ export const Window: React.FC<WindowProps> = ({
     setIsOpened((v) => !v);
   };
 
-  const handleCancelClick = () => setVisible(false);
+  const handleCancelClick = () => {
+    setMenuClosing(true);
+    setTimeout(() => {
+      setVisible(false);
+      setMenuClosing(false);
+    }, 250);
+  };
 
   const stopWallet = () => {
     dispatch(actions.lockWallet());
@@ -299,7 +319,7 @@ export const Window: React.FC<WindowProps> = ({
       ) : (
         <BackButton onClick={handleBackClick} />
       )}
-      {menuVisible && <Menu onCancel={handleCancelClick} />}
+      {menuVisible && <Menu onCancel={handleCancelClick} closing={menuClosing} />}
       {children}
     </ContainerStyled>
   );

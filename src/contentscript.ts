@@ -31,10 +31,28 @@ let rpcBackgroundPort: chrome.runtime.Port | null = null;
 let inpagePort: MessagePort | null = null;
 let isConnectedToWallet = false;
 let connectInFlight: Promise<boolean> | null = null;
-let legacyListenerRegistered = false;
 
-// Kept for the legacy window-message path only; new ensureConnected uses ephemeral ports.
-const extensionPort = extensionizer.runtime.connect({ name: Environment.CONTENT_REQ });
+// Lazy port for the legacy window-message path only; new ensureConnected uses ephemeral ports.
+// Not created at module scope — doing so would trigger ensureWalletTabOpen on every page load.
+let legacyPort: chrome.runtime.Port | null = null;
+
+function getExtensionPort(): chrome.runtime.Port {
+  if (!legacyPort) {
+    legacyPort = extensionizer.runtime.connect({ name: Environment.CONTENT_REQ });
+    legacyPort.onMessage.addListener((msg) => {
+      if (msg.result) {
+        isConnectedToWallet = true;
+        window.postMessage('apiInjected', window.origin);
+      } else if (!msg.result) {
+        window.postMessage('rejected', window.origin);
+      }
+    });
+    legacyPort.onDisconnect.addListener(() => {
+      legacyPort = null;
+    });
+  }
+  return legacyPort;
+}
 
 // Attempt one auth connection on a fresh ephemeral port.
 // Returns true/false on response, or null on timeout (so caller can retry).
@@ -217,7 +235,9 @@ window.addEventListener('message', (event) => {
 
   if (event.data && event.data.type === 'BEAM_WALLET_INPAGE_READY' && event.data.version === 1) {
     setupInpageChannel();
-    ensureRpcBackgroundPort();
+    // Do NOT eagerly create the RPC port here — it would trigger ensureWalletTabOpen
+    // on every page load even when the user never interacts with the wallet.
+    // The port is created lazily in inpagePort.onmessage when a real RPC call arrives.
     return;
   }
 
@@ -230,21 +250,7 @@ window.addEventListener('message', (event) => {
   };
 
   if (event.data.type === 'create_beam_api') {
-    if (event.data.is_reconnect) {
-      extensionPort.postMessage(reqData);
-    } else {
-      extensionPort.postMessage(reqData);
-      if (!legacyListenerRegistered) {
-        legacyListenerRegistered = true;
-        extensionPort.onMessage.addListener((msg) => {
-          if (msg.result) {
-            isConnectedToWallet = true;
-            window.postMessage('apiInjected', window.origin);
-          } else if (!msg.result) {
-            window.postMessage('rejected', window.origin);
-          }
-        });
-      }
-    }
+    // getExtensionPort() creates the port lazily (and registers the response listener once).
+    getExtensionPort().postMessage(reqData);
   }
 });

@@ -38,13 +38,35 @@ const MENU_ITEMS = [
   },
 ];
 
-const ContainerStyled = styled.nav`
-  position: absolute;
-  z-index: 4;
+const ContainerStyled = styled.nav<{ closing: boolean }>`
+  position: fixed;
+  z-index: 101;
+  top: 0;
   left: 0;
   width: 319px;
-  height: 100%;
+  height: 100vh;
   background: ${`var(--color-popup-${config.theme})`};
+  animation: ${({ closing }) => (closing ? 'menuSlideOut' : 'menuSlideIn')} 0.25s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  will-change: transform;
+  overflow: hidden;
+
+  @keyframes menuSlideIn {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes menuSlideOut {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-100%);
+    }
+  }
 `;
 
 const ListStyled = styled.ul`
@@ -81,9 +103,10 @@ const buttonStyle = css`
 
 interface MenuProps {
   onCancel?: React.MouseEventHandler;
+  closing?: boolean;
 }
 
-const Menu: React.FC<MenuProps> = ({ onCancel }) => {
+const Menu: React.FC<MenuProps> = ({ onCancel, closing = false }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -98,8 +121,8 @@ const Menu: React.FC<MenuProps> = ({ onCancel }) => {
   };
 
   return (
-    <BackDrop onCancel={onCancel}>
-      <ContainerStyled>
+    <BackDrop onCancel={onCancel} closing={closing}>
+      <ContainerStyled closing={closing}>
         <Button variant="icon" icon={CancelIcon} className={buttonStyle} onClick={onCancel} />
         <ListStyled>
           {MENU_ITEMS.map(({

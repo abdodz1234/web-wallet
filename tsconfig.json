@@ -24,6 +24,6 @@
       "@assets/*": ["assets/*"]
     }
   },
-  "include": ["**/*"],
+  "include": ["**/*", "../beam-web-wallet-sdk/dist", "../beam-web-wallet-sdk/src"],
   "exclude": ["node_modules"]
 }

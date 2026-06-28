@@ -23,6 +23,8 @@ export default class NotificationManager {
 
   appname = '';
 
+  private popupResolve: (() => void) | null = null;
+
   private static instance: NotificationManager;
 
   private uiIsTriggering = false;
@@ -91,7 +93,6 @@ export default class NotificationManager {
       },
     };
     this.appname = msg.appname;
-    this.notificationIsOpen = true;
     this.openPopup();
   }
 
@@ -106,37 +107,41 @@ export default class NotificationManager {
         is_reconnect: msg.is_reconnect,
       },
     };
-    this.notificationIsOpen = true;
     this.openPopup();
   }
 
-  openSendNotification(req, info) {
+  openSendNotification(req, info, appname?: string) {
     this.notification = {
       type: NotificationType.APPROVE_TX,
       params: {
         req,
         info,
-        appname: this.appname,
+        appname: appname ?? req?.appname ?? this.appname,
         assets: getStore().getState().wallet.assets,
       },
     };
-    this.notificationIsOpen = true;
     this.openPopup();
   }
 
-  openContractNotification(req, info, amounts) {
+  openContractNotification(req, info, amounts, appname?: string) {
     this.notification = {
       type: NotificationType.APPROVE_INVOKE,
       params: {
         req,
         info,
         amounts,
-        appname: this.appname,
+        appname: appname ?? req?.appname ?? this.appname,
         assets: getStore().getState().wallet.assets,
       },
     };
-    this.notificationIsOpen = true;
     this.openPopup();
+  }
+
+  /** Called by api.ts when the notification popup closes (port disconnect). */
+  closeNotification() {
+    this.notificationIsOpen = false;
+    this.popupResolve?.();
+    this.popupResolve = null;
   }
 
   checkForError = () => {
@@ -184,22 +189,17 @@ export default class NotificationManager {
   }
 
   async openPopup() {
+    this.notificationIsOpen = true;
     await this.triggerUi();
     await new Promise<void>((resolve) => {
-      let interval: ReturnType<typeof setInterval>;
-      const timeoutId = setTimeout(() => {
-        clearInterval(interval);
+      this.popupResolve = resolve;
+      // 60-second hard ceiling in case the popup is force-closed without signalling.
+      setTimeout(() => {
+        this.popupResolve = null;
         resolve();
       }, 60_000);
-
-      interval = setInterval(() => {
-        if (!this.notificationIsOpen) {
-          clearInterval(interval);
-          clearTimeout(timeoutId);
-          resolve();
-        }
-      }, 1000);
     });
+    this.notificationIsOpen = false;
   }
 
   async showPopup() {

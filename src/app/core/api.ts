@@ -56,6 +56,10 @@ type BeamRpcErrorMessage = {
 // Multiple tabs from the same origin should not overwrite each other (dnode did).
 const externalRpcPortsByOrigin: Record<string, Set<chrome.runtime.Port>> = {};
 
+// Track the dApp name per origin so we never use a global singleton that
+// collapses under multi-tab scenarios.
+const appnameByOrigin = new Map<string, string>();
+
 function getSenderOrigin(sender: any): string | null {
   if (!sender) return null;
   if (typeof sender.origin === 'string' && sender.origin.length) return sender.origin;
@@ -196,10 +200,10 @@ function handleConnect(remote) {
       activeTab = remote.sender.tab.id;
       notificationPort = remote;
       notificationPort.onDisconnect.addListener(() => {
+        // Resolve the openPopup() promise immediately instead of waiting for the poll.
+        notificationManager.closeNotification();
         if (activeTab) {
-          // notificationManager.closeTab(activeTab);
           activeTab = null;
-          notificationManager.appname = ''; // TODO: check with reconnect
           notificationManager.openBeamTabsIDs = {};
         }
       });
@@ -216,6 +220,7 @@ function handleConnect(remote) {
 
         remote.onDisconnect.addListener(() => {
           removeExternalRpcPort(origin, remote);
+          appnameByOrigin.delete(origin);
           // Clean up the WASM app API when the dApp's RPC channel closes (tab close / navigation).
           wallet.disconnectAppApi(origin);
         });
@@ -227,9 +232,9 @@ function handleConnect(remote) {
           } = msg.payload || {};
           if (!id || !method) return;
 
-          // keep UI labeling consistent with previous behavior
+          // Track appname per origin so multi-tab scenarios don't collide.
           if (appname) {
-            notificationManager.appname = String(appname).slice(0, 64);
+            appnameByOrigin.set(origin, String(appname).slice(0, 64));
           }
 
           try {
@@ -299,12 +304,14 @@ export function initRemoteConnection() {
 
   wallet.initContractInfoHandler((req, info, amounts, cb) => {
     wallet.initcontractInfoHandlerCallback(cb);
-    notificationManager.openContractNotification(req, info, amounts);
+    const appname = appnameByOrigin.get(req?.appurl ?? '') ?? req?.appname;
+    notificationManager.openContractNotification(req, info, amounts, appname);
   });
 
   wallet.initSendHandler((req, info, cb) => {
     wallet.initSendHandlerCallback(cb);
-    notificationManager.openSendNotification(req, info);
+    const appname = appnameByOrigin.get(req?.appurl ?? '') ?? req?.appname;
+    notificationManager.openSendNotification(req, info, appname);
   });
 }
 
@@ -444,7 +451,7 @@ export function getAssetList({ refresh }: { refresh: boolean }) {
 
 export interface InvokeContractParams {
   args: string;
-  contract: number[];
+  contract?: number[];
   create_tx?: boolean;
   appurl?: string;
   appname?: string;
@@ -578,7 +585,7 @@ export async function invokeContract(params: InvokeContractParams) {
     method: 'invoke_contract',
     params: {
       args: invokeParams.args,
-      contract: invokeParams.contract,
+      ...(invokeParams.contract?.length ? { contract: invokeParams.contract } : {}),
       create_tx: invokeParams.create_tx ?? false,
     },
   };

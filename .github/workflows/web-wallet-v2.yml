@@ -1,0 +1,38 @@
+name: Build web-wallet-v2
+
+on:
+  push:
+    branches:
+      - web-wallet-v2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'yarn'
+
+      - run: yarn --frozen-lockfile
+
+      - name: Build wallet
+        run: |
+          ./update_version.sh
+          echo "BEAM_VERSION=$(cat version.gen)" >> $GITHUB_ENV
+          echo "BEAM_TARGET_SUFFIX=$(cat suffix.gen)" >> $GITHUB_ENV
+          rm version.gen
+          rm suffix.gen
+          yarn build
+
+      - name: Upload build
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beam-web-wallet${{ env.BEAM_TARGET_SUFFIX }}-${{ env.BEAM_VERSION }}-v2
+          path: dist

@@ -1,15 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { styled } from '@linaria/react';
-import { Scrollbar } from 'react-scrollbars-custom';
 import { css } from '@linaria/core';
 import config from '@app/config';
 import Angle from './Angle';
-
-const trackStyle = css`
-  z-index: 999;
-  border-radius: 3px;
-  background-color: rgba(255, 255, 255, 0.2);
-`;
 
 const ContainerStyled = styled.div`
   display: inline-block;
@@ -21,11 +14,16 @@ const SelectStyled = styled.div`
   position: absolute;
   top: 100%;
   right: 0;
-  z-index: 1;
+  z-index: 1000;
   margin-top: 8px;
   padding: 10px 0;
   border-radius: 10px;
   background-color: ${`var(--color-popup-${config.theme})`};
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  min-width: 120px;
 `;
 
 const OptionStyled = styled.div`
@@ -99,15 +97,17 @@ export const Select: React.FC<SelectProps> = ({
   value, className, children, onSelect,
 }) => {
   const [opened, setOpened] = useState(false);
-  const selectRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (opened) {
-      const { current } = selectRef;
-      if (current) {
-        current.focus();
+    if (!opened) return undefined;
+    const handleOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpened(false);
       }
-    }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
   }, [opened]);
 
   const array = React.Children.toArray(children).filter(React.isValidElement) as React.ReactElement<OptionProps>[];
@@ -123,7 +123,6 @@ export const Select: React.FC<SelectProps> = ({
         event.preventDefault();
         return;
       }
-
       onSelect(next);
       setOpened(false);
     };
@@ -136,28 +135,18 @@ export const Select: React.FC<SelectProps> = ({
 
   const selected = array.find((child) => value === child.props.value) ?? array[0];
 
-  const handleMouseDown = () => {
-    setOpened(!opened);
-  };
-
-  const handleBlur = () => {
-    setOpened(false);
+  const handleToggle = () => {
+    setOpened((v) => !v);
   };
 
   return (
-    <ContainerStyled className={className}>
-      <ButtonStyled type="button" onMouseDown={handleMouseDown} disabled={disabled}>
+    <ContainerStyled ref={containerRef} className={className}>
+      <ButtonStyled type="button" onClick={handleToggle} disabled={disabled}>
         {selected?.props.children}
         {options.length > 1 && <Angle className={angleStyle} value={opened ? 0 : 180} margin={opened ? 3 : 1} />}
       </ButtonStyled>
 
-      {opened && (
-        <SelectStyled ref={selectRef} tabIndex={-1} onBlur={handleBlur}>
-          <Scrollbar style={{ height: 200 }} noScrollX thumbYProps={{ className: trackStyle }}>
-            {options}
-          </Scrollbar>
-        </SelectStyled>
-      )}
+      {opened && <SelectStyled>{options}</SelectStyled>}
     </ContainerStyled>
   );
 };

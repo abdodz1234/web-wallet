@@ -26,6 +26,8 @@ import {
 import { NetworkOption } from './components/NetworkSelector';
 import { ethPipeAbi, ethErc20PipeAbi, erc20Abi } from '../../utils/evmContracts';
 import { SwapForm } from './components/SwapForm';
+import { SwapModeTabs, SwapMode } from './components/SwapModeTabs';
+import { DexSwapContainer } from '../DexSwapContainer/DexSwapContainer';
 
 const amountPattern = /^\d*\.?\d*$/;
 
@@ -70,6 +72,7 @@ const parseUnitsSafe = (value: string, decimals: number) => {
 
 export const SwapContainer = () => {
   const assets = useSelector(selectAssets());
+  const [swapMode, setSwapMode] = useState<SwapMode>('cross-chain');
   const [isLoadingEth, setIsLoadingEth] = useState(false);
   const [isSendingBeam, setIsSendingBeam] = useState(false);
   const [selectedNetwork, setSelectedNetwork] = useState<string>('42161');
@@ -576,73 +579,78 @@ export const SwapContainer = () => {
 
   return (
     <Window title="Swap">
-      <SwapForm
-        fromChain={isBeamToEvm ? 'Beam' : networkName}
-        toChain={isBeamToEvm ? networkName : 'Beam'}
-        fromColor={isBeamToEvm ? 'purple' : 'blue'}
-        toColor={isBeamToEvm ? 'blue' : 'purple'}
-        onToggleDirection={handleDirectionToggle}
-        networkSelector={{
-          networks: NETWORK_OPTIONS,
-          selected: selectedNetwork,
-          connectedChainId: ethWallet?.chainId ?? null,
-          onSelect: handleNetworkSelect,
-          disabled: isLoadingEth,
-        }}
-        walletInfo={
-          ethWallet
-            ? {
-              address: ethAddress,
-              networkMismatch: Boolean(isNetworkMismatch),
-              onChangeAccount: handleChangeAccount,
-              onDisconnect: handleDisconnect,
-              isLoading: isLoadingEth,
-            }
-            : undefined
-        }
-        notices={notices}
-        evmSubmitError={!isBeamToEvm ? evmSubmitError : null}
-        amount={{
-          value: activeAmount,
-          error: activeAmountError,
-          palette: isBeamToEvm ? 'purple' : 'blue',
-          onChange: handleActiveAmountChange,
-          selectValue: activeSelectValue,
-          selectOptions: activeAssetOptions,
-          onSelect: handleAssetSelect,
-          availableLabel: activeBalanceDisplay,
-          onMax: handleActiveMax,
-          isMaxDisabled: isBeamToEvm ? beamMaxDisabled : evmMaxDisabled,
-          isLoadingBalances: !isBeamToEvm && isLoadingEvmBalances,
-        }}
-        output={{
-          value: activeAmount,
-          tokenLabel: activeToTokenLabel,
-        }}
-        fees={{
-          isBeamToEvm,
-          relayerFee: isBeamToEvm ? beamRelayerFee : evmRelayerFee,
-          relayerFeeLabel: isBeamToEvm ? selectedBeamAsset?.name ?? 'BEAM' : selectedEvmAsset?.name ?? 'ASSET',
-          relayerFeeDecimals: isBeamToEvm ? 8 : 4,
-          transactionFee: isBeamToEvm ? TRANSACTION_FEE : undefined,
-          feeFallback: Boolean(feeError),
-          totalDeducted: activeTotalDeducted,
-        }}
-        actions={{
-          showConnect: !ethWallet,
-          connectLabel: isLoadingEth ? 'Connecting...' : 'Connect MetaMask',
-          onConnect: handleConnectMetaMask,
-          showSwitch: Boolean(isNetworkMismatch) && !isBeamToEvm,
-          switchLabel: isLoadingEth ? 'Switching...' : `Switch to ${networkName}`,
-          onSwitch: handleSwitchNetwork,
-          isLoadingEth,
-          submitLabel: activeButtonLabel,
-          canSubmit: activeCanSend,
-          isSubmitting: activeIsSubmitting,
-          submitPalette: isBeamToEvm ? 'purple' : 'blue',
-        }}
-        onSubmit={handleFormSubmit}
-      />
+      <SwapModeTabs mode={swapMode} onChange={setSwapMode} />
+      {swapMode === 'dex' ? (
+        <DexSwapContainer />
+      ) : (
+        <SwapForm
+          fromChain={isBeamToEvm ? 'Beam' : networkName}
+          toChain={isBeamToEvm ? networkName : 'Beam'}
+          fromColor={isBeamToEvm ? 'purple' : 'blue'}
+          toColor={isBeamToEvm ? 'blue' : 'purple'}
+          onToggleDirection={handleDirectionToggle}
+          networkSelector={{
+            networks: NETWORK_OPTIONS,
+            selected: selectedNetwork,
+            connectedChainId: ethWallet?.chainId ?? null,
+            onSelect: handleNetworkSelect,
+            disabled: isLoadingEth,
+          }}
+          walletInfo={
+            ethWallet
+              ? {
+                address: ethAddress,
+                networkMismatch: Boolean(isNetworkMismatch),
+                onChangeAccount: handleChangeAccount,
+                onDisconnect: handleDisconnect,
+                isLoading: isLoadingEth,
+              }
+              : undefined
+          }
+          notices={notices}
+          evmSubmitError={!isBeamToEvm ? evmSubmitError : null}
+          amount={{
+            value: activeAmount,
+            error: activeAmountError,
+            palette: isBeamToEvm ? 'purple' : 'blue',
+            onChange: handleActiveAmountChange,
+            selectValue: activeSelectValue,
+            selectOptions: activeAssetOptions,
+            onSelect: handleAssetSelect,
+            availableLabel: activeBalanceDisplay,
+            onMax: handleActiveMax,
+            isMaxDisabled: isBeamToEvm ? beamMaxDisabled : evmMaxDisabled,
+            isLoadingBalances: !isBeamToEvm && isLoadingEvmBalances,
+          }}
+          output={{
+            value: activeAmount,
+            tokenLabel: activeToTokenLabel,
+          }}
+          fees={{
+            isBeamToEvm,
+            relayerFee: isBeamToEvm ? beamRelayerFee : evmRelayerFee,
+            relayerFeeLabel: isBeamToEvm ? selectedBeamAsset?.name ?? 'BEAM' : selectedEvmAsset?.name ?? 'ASSET',
+            relayerFeeDecimals: isBeamToEvm ? 8 : 4,
+            transactionFee: isBeamToEvm ? TRANSACTION_FEE : undefined,
+            feeFallback: Boolean(feeError),
+            totalDeducted: activeTotalDeducted,
+          }}
+          actions={{
+            showConnect: !ethWallet,
+            connectLabel: isLoadingEth ? 'Connecting...' : 'Connect MetaMask',
+            onConnect: handleConnectMetaMask,
+            showSwitch: Boolean(isNetworkMismatch) && !isBeamToEvm,
+            switchLabel: isLoadingEth ? 'Switching...' : `Switch to ${networkName}`,
+            onSwitch: handleSwitchNetwork,
+            isLoadingEth,
+            submitLabel: activeButtonLabel,
+            canSubmit: activeCanSend,
+            isSubmitting: activeIsSubmitting,
+            submitPalette: isBeamToEvm ? 'purple' : 'blue',
+          }}
+          onSubmit={handleFormSubmit}
+        />
+      )}
     </Window>
   );
 };

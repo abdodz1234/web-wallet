@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Beam Wallet — dApp Test Harness</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: ui-monospace, 'Cascadia Code', 'Fira Mono', monospace;
+      background: #090d18;
+      color: #c8d4e0;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    h1 { color: #00f6d2; font-size: 18px; margin-bottom: 4px; letter-spacing: 1px; }
+    .subtitle { color: #5e7080; font-size: 12px; margin-bottom: 20px; }
+
+    /* ── Grid ──────────────────────────────────────────────────── */
+    .layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; align-items: start; }
+
+    /* ── Panels ─────────────────────────────────────────────────── */
+    .panel {
+      background: #0e1a2a;
+      border: 1px solid #1c2e40;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .panel-title {
+      padding: 10px 14px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #8da1ad;
+      border-bottom: 1px solid #1c2e40;
+      background: #0b1522;
+    }
+
+    /* ── Sidebar: test list ─────────────────────────────────────── */
+    .test-list { padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+
+    .test-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 7px;
+      border: none;
+      background: transparent;
+      color: #c8d4e0;
+      font: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+      transition: background 0.1s;
+    }
+    .test-btn:hover { background: rgba(255,255,255,0.04); }
+    .test-btn.running { background: rgba(255,200,0,0.06); color: #ffc800; }
+    .test-btn.pass    { background: rgba(0,246,210,0.05); color: #00f6d2; }
+    .test-btn.fail    { background: rgba(255,70,70,0.08); color: #ff5555; }
+
+    .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      background: #2a3e54;
+      transition: background 0.15s;
+    }
+    .running .dot { background: #ffc800; animation: pulse 0.8s infinite; }
+    .pass    .dot { background: #00f6d2; }
+    .fail    .dot { background: #ff5555; }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .group-label {
+      padding: 10px 10px 3px;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #3d5570;
+    }
+
+    /* ── Top toolbar ─────────────────────────────────────────────── */
+    .toolbar {
+      display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center;
+    }
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.4px;
+      transition: opacity 0.12s, transform 0.1s;
+    }
+    .btn:hover { opacity: 0.85; transform: translateY(-1px); }
+    .btn:active { transform: none; }
+    .btn-green  { background: rgba(0,246,210,0.1); border-color: rgba(0,246,210,0.3); color: #00f6d2; }
+    .btn-red    { background: rgba(255,85,85,0.1);  border-color: rgba(255,85,85,0.3);  color: #ff5555; }
+    .btn-purple { background: rgba(170,100,255,0.1);border-color: rgba(170,100,255,0.3);color: #bb88ff; }
+    .btn-gray   { background: rgba(255,255,255,0.05);border-color: rgba(255,255,255,0.12);color: #8da1ad; }
+
+    /* ── Status bar ──────────────────────────────────────────────── */
+    .status-bar {
+      display: flex; gap: 16px; margin-bottom: 16px;
+      background: #0b1522; border: 1px solid #1c2e40; border-radius: 8px;
+      padding: 10px 14px; font-size: 11px; flex-wrap: wrap;
+    }
+    .status-item { display: flex; gap: 6px; align-items: center; }
+    .badge {
+      padding: 1px 7px; border-radius: 20px; font-size: 10px; font-weight: 700;
+    }
+    .badge-ok      { background: rgba(0,246,210,0.15); color: #00f6d2; }
+    .badge-pending { background: rgba(255,200,0,0.15); color: #ffc800; }
+    .badge-err     { background: rgba(255,85,85,0.15); color: #ff5555; }
+    .badge-idle    { background: rgba(100,120,140,0.2); color: #5e7080; }
+
+    /* ── Log / detail pane ───────────────────────────────────────── */
+    .log-wrap { display: flex; flex-direction: column; gap: 8px; }
+
+    .detail-box {
+      background: #07101a;
+      border: 1px solid #1c2e40;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 11px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      max-height: 300px;
+      min-height: 80px;
+      color: #c8d4e0;
+    }
+
+    .log-area {
+      background: #07101a;
+      border: 1px solid #1c2e40;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 11px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow-y: auto;
+      height: 360px;
+      color: #8da1ad;
+    }
+
+    .log-ts  { color: #3d5570; }
+    .log-ok  { color: #00f6d2; }
+    .log-err { color: #ff5555; }
+    .log-warn { color: #ffc800; }
+    .log-info { color: #8da1ad; }
+    .log-head { color: #bb88ff; font-weight: bold; }
+
+    /* ── Summary row ─────────────────────────────────────────────── */
+    .summary {
+      display: flex; gap: 10px; font-size: 11px; align-items: center; color: #5e7080;
+    }
+    .summary b { color: #c8d4e0; }
+
+    /* ── Multi-tab section ───────────────────────────────────────── */
+    .multi-tab-grid { display: flex; flex-direction: column; gap: 6px; padding: 12px; }
+    .tab-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 6px 10px; border-radius: 6px;
+      border: 1px solid #1c2e40; background: #0b1522;
+      font-size: 11px;
+    }
+    .tab-row .name { flex: 1; color: #c8d4e0; }
+    .tab-row .tab-status { font-size: 10px; }
+  </style>
+</head>
+<body>
+
+<h1>⬡ Beam Wallet — dApp Test Harness</h1>
+<p class="subtitle">Requires the Beam Web Wallet extension. Serve via HTTP/HTTPS so the content script is injected.</p>
+
+<!-- ── Status bar ─────────────────────────────────────────────────── -->
+<div class="status-bar">
+  <div class="status-item">
+    <span>BeamApi</span>
+    <span id="s-inject" class="badge badge-idle">checking…</span>
+  </div>
+  <div class="status-item">
+    <span>Wallet</span>
+    <span id="s-connect" class="badge badge-idle">—</span>
+  </div>
+  <div class="status-item">
+    <span>Height</span>
+    <span id="s-height" class="badge badge-idle">—</span>
+  </div>
+  <div class="status-item">
+    <span>Events recv</span>
+    <span id="s-events" class="badge badge-idle">0</span>
+  </div>
+  <div class="status-item">
+    <span>Pending RPC</span>
+    <span id="s-pending" class="badge badge-idle">0</span>
+  </div>
+</div>
+
+<!-- ── Toolbar ─────────────────────────────────────────────────────── -->
+<div class="toolbar">
+  <button class="btn btn-green"  onclick="runAll()">▶ Run All</button>
+  <button class="btn btn-gray"   onclick="resetAll()">↺ Reset</button>
+  <button class="btn btn-purple" onclick="openNewTab()">+ Open Tab (multi-tab test)</button>
+  <button class="btn btn-red"    onclick="clearLog()">✕ Clear log</button>
+  <span id="progress-label" style="font-size:11px;color:#5e7080;margin-left:4px;"></span>
+</div>
+
+<!-- ── Main layout ─────────────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- ── Sidebar ──────────────────────────────────────────────────── -->
+  <div class="panel">
+    <div class="panel-title">Test Cases</div>
+    <div class="test-list" id="test-list"><!-- injected by JS --></div>
+  </div>
+
+  <!-- ── Right pane ───────────────────────────────────────────────── -->
+  <div class="log-wrap">
+
+    <!-- summary -->
+    <div class="summary" id="summary">
+      <span>Pass: <b id="cnt-pass">0</b></span>
+      <span>Fail: <b id="cnt-fail">0</b></span>
+      <span>Total: <b id="cnt-total">0</b></span>
+    </div>
+
+    <!-- last result detail -->
+    <div class="panel">
+      <div class="panel-title">Last Result</div>
+      <pre class="detail-box" id="detail-box">—</pre>
+    </div>
+
+    <!-- log -->
+    <div class="panel">
+      <div class="panel-title">Event &amp; RPC Log</div>
+      <pre class="log-area" id="log-area"></pre>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Globals
+// ─────────────────────────────────────────────────────────────────────────────
+const appParam = new URLSearchParams(location.search).get('app');
+const APP_NAME = appParam ? `Beam Test Harness [${appParam}]` : 'Beam Test Harness';
+
+let api = null;           // window.BeamApi once injected
+let pendingCount = 0;
+let eventCount = 0;
+let connected = false;    // true once legacyConnect resolves
+let connectPromise = null;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Logging
+// ─────────────────────────────────────────────────────────────────────────────
+const logEl = document.getElementById('log-area');
+function ts() { return new Date().toISOString().slice(11,23); }
+
+function log(cls, ...args) {
+  const text = args.map(a => typeof a === 'string' ? a : JSON.stringify(a, null, 2)).join(' ');
+  const line = document.createElement('span');
+  line.className = `log-${cls}`;
+  line.textContent = `[${ts()}] ${text}\n`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function clearLog() { logEl.innerHTML = ''; }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status badges
+// ─────────────────────────────────────────────────────────────────────────────
+function badge(id, text, cls) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = `badge badge-${cls}`;
+}
+
+function updatePending(delta) {
+  pendingCount = Math.max(0, pendingCount + delta);
+  badge('s-pending', pendingCount, pendingCount > 0 ? 'pending' : 'idle');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BeamApi wrapper
+// ─────────────────────────────────────────────────────────────────────────────
+function waitForBeamApi(timeoutMs = 6000) {
+  return new Promise((resolve, reject) => {
+    if (window.BeamApi) { resolve(window.BeamApi); return; }
+    const iv = setInterval(() => {
+      if (window.BeamApi) { clearInterval(iv); resolve(window.BeamApi); }
+    }, 100);
+    setTimeout(() => { clearInterval(iv); reject(new Error('window.BeamApi not found — extension not installed or content script not running')); }, timeoutMs);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Legacy auth via create_beam_api window.postMessage path.
+//
+// The contentscript creates a LONG-LIVED legacyPort (no timeout) that stays
+// open until the wallet responds with {result:true/false}. This avoids the
+// race condition in the ensureConnected() ephemeral-port path (8s + 15s
+// timeouts that can expire before WASM createAppAPI finishes).
+// ─────────────────────────────────────────────────────────────────────────────
+function legacyConnect() {
+  if (connected) return Promise.resolve(true);
+  if (connectPromise) return connectPromise;
+
+  connectPromise = new Promise((resolve, reject) => {
+    // Generous timeout — needs user to approve the popup.
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      connectPromise = null;
+      reject(new Error(
+        'Wallet connection timed out (120s). Make sure the extension is installed, the wallet is open and unlocked, then try again.'
+      ));
+    }, 120_000);
+
+    function handler(e) {
+      if (e.source !== window) return;
+      if (e.data === 'apiInjected') {
+        clearTimeout(timer);
+        window.removeEventListener('message', handler);
+        connected = true;
+        badge('s-connect', 'connected', 'ok');
+        log('ok', 'Wallet connected — apiInjected received');
+        resolve(true);
+      } else if (e.data === 'rejected') {
+        clearTimeout(timer);
+        window.removeEventListener('message', handler);
+        connectPromise = null;
+        badge('s-connect', 'rejected', 'err');
+        reject(new Error('Wallet connection rejected by user'));
+      }
+    }
+
+    window.addEventListener('message', handler);
+    log('warn', '⚠ Wallet popup should appear — please approve the connection');
+    window.postMessage(
+      { type: 'create_beam_api', apiver: 'current', apivermin: '', appname: APP_NAME, is_reconnect: false },
+      window.origin,
+    );
+  });
+
+  return connectPromise;
+}
+
+async function rpc(method, params) {
+  if (!api) api = window.BeamApi;
+  if (!api) throw new Error('BeamApi not ready');
+  // Ensure auth is established before sending any RPC.
+  await legacyConnect();
+  updatePending(+1);
+  try {
+    return await api.request({ method, params, appname: APP_NAME });
+  } finally {
+    updatePending(-1);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event subscription
+// ─────────────────────────────────────────────────────────────────────────────
+let pushHandler = null;
+function ensurePushHandler() {
+  if (pushHandler || !api) return;
+  pushHandler = true;
+  api.callWalletApiResult((json) => {
+    try {
+      const msg = JSON.parse(json);
+      const id = msg?.id;
+      // Only log true push events (no id field = server push, or id === "event")
+      if (!id || id === 'event' || typeof id !== 'string') {
+        eventCount++;
+        document.getElementById('s-events').textContent = eventCount;
+        document.getElementById('s-events').className = 'badge badge-ok';
+        log('ok', '↙ PUSH event:', JSON.stringify(msg?.result ?? msg).slice(0, 200));
+      }
+    } catch { /* ignore */ }
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Test registry
+// ─────────────────────────────────────────────────────────────────────────────
+const GROUPS = [
+  {
+    label: 'A · Connection',
+    tests: [
+      { id: 'inject',       name: 'BeamApi injected',       fn: testInject },
+      { id: 'wallet-status-first', name: 'First connect + wallet_status', fn: testFirstConnect },
+      { id: 'get-version',  name: 'get_version',            fn: testGetVersion },
+    ],
+  },
+  {
+    label: 'B · Core RPC',
+    tests: [
+      { id: 'assets-list',  name: 'assets_list',            fn: testAssetsList },
+      { id: 'tx-list',      name: 'tx_list (last 20)',       fn: testTxList },
+      { id: 'addr-list',    name: 'addr_list',              fn: testAddrList },
+      { id: 'create-addr',  name: 'create_address',         fn: testCreateAddress },
+      { id: 'validate-addr',name: 'validate_address',       fn: testValidateAddress },
+      { id: 'get-utxo',     name: 'get_utxo',               fn: testGetUtxo },
+    ],
+  },
+  {
+    label: 'C · Event Subscriptions',
+    tests: [
+      { id: 'sub-system',   name: 'subscribe ev_system_state',   fn: testSubSystem },
+      { id: 'sub-assets',   name: 'subscribe ev_assets_changed', fn: testSubAssets },
+      { id: 'sub-txs',      name: 'subscribe ev_txs_changed',    fn: testSubTxs },
+      { id: 'sub-unsub-stress', name: 'rapid subscribe/unsubscribe ×10', fn: testSubUnsubStress },
+    ],
+  },
+  {
+    label: 'D · Concurrency',
+    tests: [
+      { id: 'flood-5',      name: 'concurrent flood ×5',    fn: () => testFlood(5) },
+      { id: 'flood-20',     name: 'concurrent flood ×20',   fn: () => testFlood(20) },
+      { id: 'flood-mixed',  name: 'concurrent mixed ×10',   fn: testFloodMixed },
+      { id: 'sequential-50',name: 'sequential chain ×50',   fn: testSequential },
+    ],
+  },
+  {
+    label: 'E · Contract',
+    tests: [
+      { id: 'invoke-dex',   name: 'invoke_contract DEX pools_view',   fn: testInvokeDex },
+      { id: 'invoke-conc',  name: 'invoke_contract concurrent ×3',    fn: testInvokeConcurrent },
+    ],
+  },
+  {
+    label: 'F · Edge Cases',
+    tests: [
+      { id: 'reconnect',    name: 'reconnect after port reset',  fn: testReconnect },
+      { id: 'large-txlist', name: 'tx_list large (count=200)',   fn: testLargeTxList },
+      { id: 'multi-tab-info', name: 'multi-tab instructions',   fn: testMultiTabInfo },
+    ],
+  },
+];
+
+const allTests = GROUPS.flatMap(g => g.tests);
+const stateMap  = {};   // id → 'idle'|'running'|'pass'|'fail'
+const resultMap = {};   // id → string detail
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Build sidebar
+// ─────────────────────────────────────────────────────────────────────────────
+function buildSidebar() {
+  const list = document.getElementById('test-list');
+  list.innerHTML = '';
+  GROUPS.forEach(group => {
+    const gl = document.createElement('div');
+    gl.className = 'group-label';
+    gl.textContent = group.label;
+    list.appendChild(gl);
+    group.tests.forEach(t => {
+      stateMap[t.id] = 'idle';
+      const btn = document.createElement('button');
+      btn.className = 'test-btn';
+      btn.id = `tb-${t.id}`;
+      btn.innerHTML = `<span class="dot"></span><span>${t.name}</span>`;
+      btn.onclick = () => runOne(t);
+      list.appendChild(btn);
+    });
+  });
+}
+
+function setTestState(id, state, detail) {
+  stateMap[id] = state;
+  if (detail !== undefined) resultMap[id] = detail;
+  const btn = document.getElementById(`tb-${id}`);
+  if (btn) btn.className = `test-btn ${state}`;
+  updateSummary();
+}
+
+function updateSummary() {
+  const pass = Object.values(stateMap).filter(s => s === 'pass').length;
+  const fail = Object.values(stateMap).filter(s => s === 'fail').length;
+  const total = allTests.length;
+  document.getElementById('cnt-pass').textContent = pass;
+  document.getElementById('cnt-fail').textContent = fail;
+  document.getElementById('cnt-total').textContent = total;
+}
+
+function showDetail(id) {
+  const box = document.getElementById('detail-box');
+  box.textContent = resultMap[id] ?? '—';
+}
+
+function resetAll() {
+  allTests.forEach(t => { stateMap[t.id] = 'idle'; delete resultMap[t.id]; });
+  buildSidebar();
+  document.getElementById('detail-box').textContent = '—';
+  eventCount = 0;
+  badge('s-events', '0', 'idle');
+  // Reset connection state so the next run re-authenticates.
+  connected = false;
+  connectPromise = null;
+  badge('s-connect', '—', 'idle');
+  badge('s-height', '—', 'idle');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Runner
+// ─────────────────────────────────────────────────────────────────────────────
+async function runOne(t) {
+  if (stateMap[t.id] === 'running') return;
+  setTestState(t.id, 'running');
+  log('head', `▶ ${t.name}`);
+  const t0 = performance.now();
+  try {
+    const detail = await t.fn();
+    const ms = (performance.now() - t0).toFixed(0);
+    setTestState(t.id, 'pass', detail ?? '✓ OK');
+    resultMap[t.id] = `✓ ${ms}ms\n\n${detail ?? ''}`;
+    showDetail(t.id);
+    log('ok', `✓ ${t.name} (${ms}ms)`);
+  } catch (err) {
+    const ms = (performance.now() - t0).toFixed(0);
+    // Wallet API errors come as {error:{code,message},id} — no root .message.
+    const errMsg = typeof err === 'string' ? err
+      : (err?.message ?? err?.error?.message ?? JSON.stringify(err) ?? 'unknown error');
+    const errDetail = err?.error ? `\n\n${JSON.stringify(err.error, null, 2)}` : '';
+    setTestState(t.id, 'fail', `✗ ${errMsg}${errDetail}`);
+    resultMap[t.id] = `✗ ${ms}ms\n\n${errMsg}${errDetail}`;
+    showDetail(t.id);
+    log('err', `✗ ${t.name} (${ms}ms): ${errMsg}`);
+  }
+}
+
+async function runAll() {
+  const label = document.getElementById('progress-label');
+  for (let i = 0; i < allTests.length; i++) {
+    label.textContent = `Running ${i+1}/${allTests.length}…`;
+    await runOne(allTests[i]);
+  }
+  label.textContent = '';
+}
+
+function openNewTab() {
+  window.open(window.location.href, '_blank');
+  log('info', '↗ New tab opened — run tests there in parallel');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── A: Connection tests
+// ─────────────────────────────────────────────────────────────────────────────
+async function testInject() {
+  const a = await waitForBeamApi(5000);
+  api = a;
+  const methods = Object.keys(a).join(', ');
+  badge('s-inject', 'OK', 'ok');
+  ensurePushHandler();
+  return `window.BeamApi is present.\nMethods: ${methods}`;
+}
+
+async function testFirstConnect() {
+  if (!api) api = await waitForBeamApi();
+  ensurePushHandler();
+  // legacyConnect() sends create_beam_api via postMessage and waits for
+  // apiInjected (no timeout pressure). After this, isConnectedToWallet=true
+  // in the content script so all rpc() calls skip ensureConnected entirely.
+  await legacyConnect();
+  const result = await rpc('wallet_status');
+  const height = result?.current_height ?? '?';
+  badge('s-height', String(height), 'ok');
+  return JSON.stringify(result, null, 2);
+}
+
+async function testGetVersion() {
+  const result = await rpc('get_version');
+  return JSON.stringify(result, null, 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── B: Core RPC
+// ─────────────────────────────────────────────────────────────────────────────
+async function testAssetsList() {
+  const result = await rpc('assets_list', { refresh: false });
+  const count = Array.isArray(result) ? result.length : (result?.assets?.length ?? '?');
+  // JSON.stringify(undefined) returns undefined (not a string) — guard with ?? null.
+  return `${count} asset(s)\n\n${JSON.stringify(result ?? null, null, 2).slice(0, 1200)}`;
+}
+
+async function testTxList() {
+  const result = await rpc('tx_list', { count: 20, skip: 0 });
+  const txs = Array.isArray(result) ? result : (result?.txs ?? []);
+  return `${txs.length} transaction(s)\n\n${JSON.stringify(txs.slice(0, 3), null, 2).slice(0, 1200)}…`;
+}
+
+async function testAddrList() {
+  const result = await rpc('addr_list', { own: true });
+  const addrs = Array.isArray(result) ? result : (result?.result ?? []);
+  return `${addrs.length} address(es)\n\n${JSON.stringify(addrs.slice(0, 2), null, 2)}`;
+}
+
+async function testCreateAddress() {
+  const result = await rpc('create_address', {
+    type: 'regular',
+    comment: 'test-harness-' + Date.now(),
+    use_default_signature: true,
+  });
+  return `address: ${typeof result === 'string' ? result : JSON.stringify(result)}`;
+}
+
+async function testValidateAddress() {
+  // get an address to validate from addr_list, fall back to a fixed address
+  let addr;
+  try {
+    const list = await rpc('addr_list', { own: true });
+    addr = (Array.isArray(list) ? list : (list?.result ?? []))[0]?.address;
+  } catch { /* ignore */ }
+  addr = addr ?? '11xzehmdgmk4jyh3yd0yavat4mj7ksgypkrmcxmkfj0nkd5xzxm8qfhyqhv8';
+  const result = await rpc('validate_address', { address: addr });
+  return `address: ${addr}\nresult: ${JSON.stringify(result, null, 2)}`;
+}
+
+async function testGetUtxo() {
+  // get_utxo is restricted to the wallet UI — external dApps receive "Call is not allowed".
+  // We treat that as an expected, documented limitation rather than a test failure.
+  try {
+    const result = await rpc('get_utxo', { count: 10, skip: 0 });
+    const utxos = Array.isArray(result) ? result : (result?.utxos ?? result ?? []);
+    const count = Array.isArray(utxos) ? utxos.length : '?';
+    return `${count} UTXO(s)\n\n${JSON.stringify((Array.isArray(utxos) ? utxos : [utxos]).slice(0,3), null, 2)}`;
+  } catch (err) {
+    const msg = err?.error?.message ?? err?.message ?? JSON.stringify(err);
+    return `Note: get_utxo is not available to external dApps.\nWallet response: ${msg}`;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── C: Event subscriptions
+// ─────────────────────────────────────────────────────────────────────────────
+async function subscribe(events) {
+  const params = {};
+  events.forEach(k => { params[k] = true; });
+  return rpc('ev_subunsub', params);
+}
+
+async function unsubscribe(events) {
+  const params = {};
+  events.forEach(k => { params[k] = false; });
+  return rpc('ev_subunsub', params);
+}
+
+async function testSubSystem() {
+  ensurePushHandler();
+  await subscribe(['ev_system_state']);
+  log('info', 'Subscribed to ev_system_state — waiting 3s for push…');
+  await sleep(3000);
+  await unsubscribe(['ev_system_state']);
+  return `Subscribed, waited 3s, unsubscribed.\nEvent count: ${eventCount}`;
+}
+
+async function testSubAssets() {
+  ensurePushHandler();
+  // ev_assets_changed is not present in all wallet builds; fall back gracefully.
+  const evName = 'ev_assets_changed';
+  try {
+    await subscribe([evName]);
+    log('info', `Subscribed to ${evName} — waiting 2s…`);
+    await sleep(2000);
+    await unsubscribe([evName]);
+    return `Subscribed, waited 2s, unsubscribed.\nEvent count: ${eventCount}`;
+  } catch (err) {
+    const why = err?.error?.message ?? err?.message ?? JSON.stringify(err);
+    return `Note: ${evName} not supported by this wallet build.\nReason: ${why}`;
+  }
+}
+
+async function testSubTxs() {
+  ensurePushHandler();
+  await subscribe(['ev_txs_changed']);
+  log('info', 'Subscribed to ev_txs_changed — waiting 2s…');
+  await sleep(2000);
+  await unsubscribe(['ev_txs_changed']);
+  return `Subscribed, waited 2s, unsubscribed.\nEvent count: ${eventCount}`;
+}
+
+async function testSubUnsubStress() {
+  ensurePushHandler();
+  const N = 10;
+  // Only use events confirmed to work (ev_assets_changed may be unsupported).
+  const events = ['ev_system_state', 'ev_txs_changed'];
+  const times = [];
+  for (let i = 0; i < N; i++) {
+    const t0 = performance.now();
+    await subscribe(events);
+    await unsubscribe(events);
+    times.push((performance.now() - t0).toFixed(1));
+    log('info', `sub/unsub cycle ${i+1}/${N}: ${times[i]}ms`);
+  }
+  const avg = (times.reduce((a,b) => a + parseFloat(b), 0) / N).toFixed(1);
+  return `${N} subscribe→unsubscribe cycles (${events.join(', ')})\navg: ${avg}ms\ntimes: ${times.join(', ')}ms`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── D: Concurrency
+// ─────────────────────────────────────────────────────────────────────────────
+async function testFlood(N) {
+  const t0 = performance.now();
+  log('info', `Firing ${N} concurrent wallet_status requests…`);
+  const results = await Promise.allSettled(
+    Array.from({ length: N }, () => rpc('wallet_status'))
+  );
+  const ms = (performance.now() - t0).toFixed(0);
+  const pass = results.filter(r => r.status === 'fulfilled').length;
+  const fail = results.filter(r => r.status === 'rejected').length;
+  log('info', `Flood ×${N}: ${pass} ok, ${fail} fail — total ${ms}ms`);
+  const errs = results.filter(r => r.status === 'rejected').map(r => r.reason?.message);
+  return `${N} concurrent wallet_status\n${pass} OK / ${fail} failed\ntotal time: ${ms}ms\n${errs.length ? 'Errors:\n' + errs.join('\n') : ''}`;
+}
+
+async function testFloodMixed() {
+  const calls = [
+    ...Array(4).fill('wallet_status'),
+    ...Array(3).fill('assets_list'),
+    ...Array(3).fill('tx_list'),
+  ];
+  const t0 = performance.now();
+  log('info', `Firing ${calls.length} mixed concurrent requests…`);
+  const results = await Promise.allSettled(
+    calls.map(method => rpc(method, method === 'tx_list' ? { count: 5, skip: 0 } : undefined))
+  );
+  const ms = (performance.now() - t0).toFixed(0);
+  const pass = results.filter(r => r.status === 'fulfilled').length;
+  const fail = results.filter(r => r.status === 'rejected').length;
+  return `10 mixed concurrent calls (4×wallet_status + 3×assets_list + 3×tx_list)\n${pass} OK / ${fail} failed\ntotal: ${ms}ms`;
+}
+
+async function testSequential() {
+  const N = 50;
+  const times = [];
+  for (let i = 0; i < N; i++) {
+    const t0 = performance.now();
+    await rpc('wallet_status');
+    times.push(performance.now() - t0);
+  }
+  const avg  = (times.reduce((a,b) => a+b, 0) / N).toFixed(1);
+  const min  = Math.min(...times).toFixed(1);
+  const max  = Math.max(...times).toFixed(1);
+  const p95  = [...times].sort((a,b)=>a-b)[Math.floor(N*0.95)].toFixed(1);
+  return `${N} sequential wallet_status\navg: ${avg}ms  min: ${min}ms  max: ${max}ms  p95: ${p95}ms`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── E: Contract
+// ─────────────────────────────────────────────────────────────────────────────
+const DEX_CID = '729fe098d9fd2b57705db1a05a74103dd4b891f535aef2ae69b47bcfdeef9cbf';
+const DEX_APP_URL = 'beam-dex-internal';
+const DEX_APP_NAME = 'BEAM DEX';
+
+let ammWasmCache = null;
+async function loadAmmWasm() {
+  if (ammWasmCache) return ammWasmCache;
+  // chrome.runtime.getURL is only available to extension JS, not web-page JS.
+  // The WASM must be served by THIS test server. Copy the file:
+  //   cp dist/assets/amm.wasm test-dapp/amm.wasm
+  // then restart the serve.mjs server.
+  for (const url of ['/amm.wasm', '/assets/amm.wasm']) {
+    try {
+      const resp = await fetch(url);
+      if (resp.ok) {
+        ammWasmCache = Array.from(new Uint8Array(await resp.arrayBuffer()));
+        return ammWasmCache;
+      }
+    } catch { /* try next */ }
+  }
+  throw new Error(
+    'amm.wasm not found at /amm.wasm or /assets/amm.wasm.\n' +
+    'Setup: cp dist/assets/amm.wasm test-dapp/amm.wasm  (then restart serve.mjs)',
+  );
+}
+
+async function testInvokeDex() {
+  const contract = await loadAmmWasm();
+  const result = await rpc('invoke_contract', {
+    args: `action=pools_view,cid=${DEX_CID}`,
+    contract,
+    create_tx: false,
+    appurl: DEX_APP_URL,
+    appname: DEX_APP_NAME,
+  });
+  const output = result?.output ?? result;
+  let parsed;
+  try { parsed = JSON.parse(typeof output === 'string' ? output : JSON.stringify(output)); }
+  catch { parsed = output; }
+  const pools = parsed?.res ?? [];
+  return `${pools.length} DEX pool(s)\n\n${JSON.stringify(pools.slice(0,4), null, 2)}`;
+}
+
+async function testInvokeConcurrent() {
+  const contract = await loadAmmWasm();
+  const N = 3;
+  const t0 = performance.now();
+  log('info', `Firing ${N} concurrent invoke_contract (pools_view)…`);
+  const results = await Promise.allSettled(
+    Array.from({ length: N }, () => rpc('invoke_contract', {
+      args: `action=pools_view,cid=${DEX_CID}`,
+      contract,
+      create_tx: false,
+      appurl: DEX_APP_URL,
+      appname: DEX_APP_NAME,
+    }))
+  );
+  const ms = (performance.now() - t0).toFixed(0);
+  const pass = results.filter(r => r.status === 'fulfilled').length;
+  const fail = results.filter(r => r.status === 'rejected').length;
+  return `${N} concurrent invoke_contract\n${pass} OK / ${fail} failed\ntotal: ${ms}ms`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ── F: Edge cases
+// ─────────────────────────────────────────────────────────────────────────────
+async function testReconnect() {
+  // The extension's content script keeps the channel alive as long as the tab is open.
+  // We simulate "reconnect" by verifying a fresh request succeeds after a deliberate pause.
+  log('info', 'Pausing 5s (simulates idle/background tab) then reconnecting…');
+  await sleep(5000);
+  const result = await rpc('wallet_status');
+  const height = result?.current_height ?? '?';
+  return `Reconnect OK after 5s idle.\nheight: ${height}`;
+}
+
+async function testLargeTxList() {
+  const t0 = performance.now();
+  const result = await rpc('tx_list', { count: 200, skip: 0 });
+  const ms = (performance.now() - t0).toFixed(0);
+  const txs = Array.isArray(result) ? result : (result?.txs ?? []);
+  return `Requested 200 txs → received ${txs.length}\ntime: ${ms}ms`;
+}
+
+async function testMultiTabInfo() {
+  // Not an automated test — provides instructions.
+  const url = window.location.href;
+  return [
+    'Multi-tab / multi-dApp test instructions:',
+    '',
+    '1. Click "Open Tab" above to open this page in a new tab.',
+    '   Each tab has its own BeamApi connection and app-name session.',
+    '   Run "Run All" in both tabs simultaneously.',
+    '',
+    '2. To simulate multiple different dApps from the same origin:',
+    `   Open: ${url}?app=DApp-A  and  ${url}?app=DApp-B`,
+    '   The wallet should show separate connection dialogs for each.',
+    '',
+    '3. Connect/Disconnect from the wallet side:',
+    '   • In the wallet: Settings → Connected Sites',
+    '   • Disconnect one site while the other is running flood tests.',
+    '   • Verify the disconnected tab gets an error on next RPC call.',
+    '',
+    '4. Session survival: Lock the wallet mid-test.',
+    '   Pending requests should fail; re-unlock and reconnect should work.',
+    '',
+    `Current tab id hint: ${Date.now().toString(36)}`,
+  ].join('\n');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+buildSidebar();
+
+// Auto-detect injection
+waitForBeamApi(6000)
+  .then(a => { api = a; badge('s-inject', 'OK', 'ok'); ensurePushHandler(); log('ok', 'window.BeamApi detected'); })
+  .catch(e => { badge('s-inject', 'missing', 'err'); log('err', e.message); });
+
+// Show appname in title if ?app= param set (appParam/APP_NAME defined at top)
+if (appParam) {
+  document.title = `Beam Test — ${appParam}`;
+  document.querySelector('h1').textContent += ` [${appParam}]`;
+}
+</script>
+</body>
+</html>

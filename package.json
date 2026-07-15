@@ -68,7 +68,7 @@
     "@linaria/react": "^5.0.3",
     "@types/readable-stream": "^4.0.23",
     "@unstoppabledomains/resolution": "^8.3.3",
-    "beam-wasm-client": "7.3.13743",
+    "beam-wasm-client": "7.5.14349",
     "browser-passworder": "^2.0.3",
     "buffer": "^6.0.3",
     "core-js": "^3.47.0",

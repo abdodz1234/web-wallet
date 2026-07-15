@@ -1,6 +1,7 @@
 name: Build web-wallet-v2
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - web-wallet-v2
